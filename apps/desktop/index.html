@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>eva-wiki</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <svg id="graph" aria-label="Vault graph"></svg>
+    <p id="hint">Open a vault to explore its graph.</p>
+    <header id="command" class="glass">
+      <button id="open-vault">Open vault</button>
+      <span id="vault-path">No vault open</span>
+    </header>
+    <aside id="detail" class="glass" hidden>
+      <button id="detail-close" aria-label="Close details">&#10005;</button>
+      <div id="sidebar"></div>
+    </aside>
+    <nav id="legend" class="glass" hidden aria-label="Node types"></nav>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

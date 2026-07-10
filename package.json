@@ -1,0 +1,14 @@
+{
+  "name": "eva-wiki",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/wiki-lib",
+    "test": "npm run test -w packages/wiki-lib",
+    "tauri": "npm run tauri -w apps/desktop --"
+  }
+}
