@@ -18,11 +18,42 @@
       <div id="recent"></div>
     </section>
     <header id="command" class="glass" hidden>
-      <button id="open-vault" class="btn-stamp">Open vault</button>
-      <span id="vault-path">No vault open</span>
+      <div class="vault-cluster">
+        <button id="open-vault" class="btn-stamp">Open vault</button>
+        <button id="recent-toggle" class="btn-stamp aux" aria-label="Recent vaults">&#9662;</button>
+        <span id="vault-path">No vault open</span>
+      </div>
+      <span class="toolbar-rule" aria-hidden="true"></span>
+      <nav class="ops" aria-label="Vault operations">
+        <button id="op-ingest" class="op" disabled title="Add a source for the agent to integrate — requires the agent adapter">
+          Ingest<span class="soon">soon</span>
+        </button>
+        <button id="op-query" class="op" disabled title="Ask the vault a question — requires the agent adapter">
+          Query<span class="soon">soon</span>
+        </button>
+        <button id="op-lint" class="op" aria-pressed="false">Lint</button>
+        <button id="op-log" class="op" aria-pressed="false">Log</button>
+      </nav>
     </header>
+    <div id="recent-pop" class="glass" hidden></div>
+    <aside id="lint-panel" class="glass dock-left" hidden aria-label="Vault lint">
+      <button class="panel-close" data-panel="lint" aria-label="Close lint">&#10005;</button>
+      <div class="panel-head">
+        <h2>Lint</h2>
+        <p class="panel-sub" id="lint-sub"></p>
+      </div>
+      <div id="lint-body"></div>
+    </aside>
+    <aside id="log-panel" class="glass dock-left" hidden aria-label="Vault log">
+      <button class="panel-close" data-panel="log" aria-label="Close log">&#10005;</button>
+      <div class="panel-head">
+        <h2>Log</h2>
+        <p class="panel-sub" id="log-sub"></p>
+      </div>
+      <div id="log-body"></div>
+    </aside>
     <aside id="detail" class="glass" hidden>
-      <button id="detail-close" aria-label="Close details">&#10005;</button>
+      <button id="detail-close" class="panel-close" aria-label="Close details">&#10005;</button>
       <div id="sidebar"></div>
     </aside>
     <nav id="legend" class="glass" hidden aria-label="Node types"></nav>

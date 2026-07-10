@@ -42,22 +42,144 @@ interface SimNode extends SimulationNodeDatum {
   type: string | null;
 }
 
+interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const svg = document.getElementById('graph') as unknown as SVGSVGElement;
 const sidebar = document.getElementById('sidebar') as HTMLElement;
 const vaultPathEl = document.getElementById('vault-path') as HTMLElement;
 const emptyEl = document.getElementById('empty') as HTMLElement;
 const recentEl = document.getElementById('recent') as HTMLElement;
+const recentPopEl = document.getElementById('recent-pop') as HTMLElement;
+const recentToggleEl = document.getElementById('recent-toggle') as HTMLButtonElement;
 const commandEl = document.getElementById('command') as HTMLElement;
 const detailEl = document.getElementById('detail') as HTMLElement;
 const legendEl = document.getElementById('legend') as HTMLElement;
+const lintPanelEl = document.getElementById('lint-panel') as HTMLElement;
+const lintSubEl = document.getElementById('lint-sub') as HTMLElement;
+const lintBodyEl = document.getElementById('lint-body') as HTMLElement;
+const logPanelEl = document.getElementById('log-panel') as HTMLElement;
+const logSubEl = document.getElementById('log-sub') as HTMLElement;
+const logBodyEl = document.getElementById('log-body') as HTMLElement;
+const opLintEl = document.getElementById('op-lint') as HTMLButtonElement;
+const opLogEl = document.getElementById('op-log') as HTMLButtonElement;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const AMBIENT_ALPHA = 0.012;
+const PANEL_MARGIN = 28;
 
 let vault: Vault | null = null;
 let issues: LintIssue[] = [];
+let logRaw: string | null = null;
 let simulation: Simulation<SimNode, SimulationLinkDatum<SimNode>> | null = null;
+let simNodes: SimNode[] = [];
+let refreshPositions: (() => void) | null = null;
+let centerX = forceX<SimNode>(0);
+let centerY = forceY<SimNode>(0);
+
+/* Panel exclusion zones ------------------------------------------------------
+   Every visible vellum sheet claims its bounding rect (plus a margin) as
+   space the graph must not occupy. Rects are recomputed whenever a panel
+   opens, closes, or changes content, and on window resize. */
+let exclusionRects: Rect[] = [];
+
+function updateExclusions(): void {
+  exclusionRects = [...document.querySelectorAll<HTMLElement>('.glass')]
+    .filter((el) => !el.hidden)
+    .map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        left: r.left - PANEL_MARGIN,
+        top: r.top - PANEL_MARGIN,
+        right: r.right + PANEL_MARGIN,
+        bottom: r.bottom + PANEL_MARGIN,
+      };
+    });
+  // A panel may have opened over an already-pinned node; move the pin clear
+  // so no node is ever left unreachable behind a sheet.
+  let movedPin = false;
+  for (const node of simNodes) {
+    if (node.fx == null || node.fy == null) continue;
+    const nudged = nudgeOutside(node.fx, node.fy);
+    if (nudged.x !== node.fx || nudged.y !== node.fy) {
+      node.fx = nudged.x;
+      node.fy = nudged.y;
+      movedPin = true;
+    }
+  }
+  if (movedPin) {
+    simulation?.tick(1);
+    refreshPositions?.();
+  }
+}
+
+const insideRect = (x: number, y: number, r: Rect): boolean =>
+  x > r.left && x < r.right && y > r.top && y < r.bottom;
+
+/** Nearest point just outside any exclusion rect, preferring exits that stay
+    on screen. */
+function nudgeOutside(x: number, y: number): { x: number; y: number } {
+  let nx = x;
+  let ny = y;
+  for (const r of exclusionRects) {
+    if (!insideRect(nx, ny, r)) continue;
+    const candidates = [
+      { d: nx - r.left, x: r.left - 4, y: ny },
+      { d: r.right - nx, x: r.right + 4, y: ny },
+      { d: ny - r.top, x: nx, y: r.top - 4 },
+      { d: r.bottom - ny, x: nx, y: r.bottom + 4 },
+    ].sort((a, b) => a.d - b.d);
+    const pad = 12;
+    const fits = (c: { x: number; y: number }) =>
+      c.x > pad && c.x < window.innerWidth - pad && c.y > pad && c.y < window.innerHeight - pad;
+    const pick = candidates.find(fits) ?? candidates[0];
+    nx = pick.x;
+    ny = pick.y;
+  }
+  return { x: nx, y: ny };
+}
+
+/* Custom d3 force: free nodes inside an exclusion rect are moved toward its
+   nearest edge with a position correction (like forceCollide), so escape
+   doesn't depend on alpha and can't reach equilibrium against link/centering
+   forces — even during near-still ambient drift. Pinned nodes are user intent
+   and are handled at drag release and in updateExclusions instead. */
+function forcePanels() {
+  let nodes: SimNode[] = [];
+  const force = () => {
+    for (const node of nodes) {
+      if (node.fx != null) continue;
+      const x = node.x ?? 0;
+      const y = node.y ?? 0;
+      for (const r of exclusionRects) {
+        if (!insideRect(x, y, r)) continue;
+        const dl = x - r.left;
+        const dr = r.right - x;
+        const dt = y - r.top;
+        const db = r.bottom - y;
+        const min = Math.min(dl, dr, dt, db);
+        const step = Math.max(1.5, 0.25 * (min + 10));
+        if (min === dl) node.x = x - step;
+        else if (min === dr) node.x = x + step;
+        else if (min === dt) node.y = y - step;
+        else node.y = y + step;
+        // kill momentum carrying the node deeper into the panel
+        node.vx = (node.vx ?? 0) * 0.6;
+        node.vy = (node.vy ?? 0) * 0.6;
+      }
+    }
+  };
+  force.initialize = (n: SimNode[]) => {
+    nodes = n;
+  };
+  return force;
+}
+const panelForce = forcePanels();
 
 async function collectMarkdown(root: string, rel = ''): Promise<VaultFile[]> {
   const files: VaultFile[] = [];
@@ -94,16 +216,16 @@ function saveRecents(paths: string[]): void {
 const basenameOf = (path: string): string =>
   path.replace(/\/+$/, '').split('/').pop() ?? path;
 
-function renderRecents(errorMessage?: string): void {
+function renderRecentsInto(container: HTMLElement, errorMessage?: string): void {
   const recents = getRecents();
-  recentEl.innerHTML = '';
+  container.innerHTML = '';
   if (recents.length === 0 && !errorMessage) return;
 
   if (recents.length > 0) {
     const label = document.createElement('p');
     label.className = 'recent-label';
     label.textContent = 'Recent';
-    recentEl.appendChild(label);
+    container.appendChild(label);
     for (const path of recents) {
       const row = document.createElement('button');
       row.className = 'recent-row';
@@ -115,15 +237,20 @@ function renderRecents(errorMessage?: string): void {
       full.textContent = path;
       row.append(name, full);
       row.addEventListener('click', () => void openRecent(path));
-      recentEl.appendChild(row);
+      container.appendChild(row);
     }
   }
   if (errorMessage) {
     const error = document.createElement('p');
     error.className = 'recent-error';
     error.textContent = errorMessage;
-    recentEl.appendChild(error);
+    container.appendChild(error);
   }
+}
+
+function refreshRecentViews(errorMessage?: string): void {
+  renderRecentsInto(recentEl, errorMessage);
+  if (!recentPopEl.hidden) renderRecentsInto(recentPopEl, errorMessage);
 }
 
 async function openRecent(path: string): Promise<void> {
@@ -131,7 +258,7 @@ async function openRecent(path: string): Promise<void> {
     await openVault(path);
   } catch {
     saveRecents(getRecents().filter((p) => p !== path));
-    renderRecents(`Couldn't open ${basenameOf(path)} — removed from recent.`);
+    refreshRecentViews(`Couldn't open ${basenameOf(path)} — removed from recent.`);
   }
 }
 
@@ -141,17 +268,26 @@ async function chooseVault(): Promise<void> {
 }
 
 async function openVault(root: string): Promise<void> {
-  const files = await collectMarkdown(root);
+  // A root-level log.md is the vault's operation record, not wiki content:
+  // it feeds the Log view and stays out of the graph and the linter.
+  const rootEntries = await readDir(root);
+  const logName = rootEntries.find((e) => e.isFile && e.name.toLowerCase() === 'log.md')?.name;
+  logRaw = logName ? await readTextFile(`${root}/${logName}`) : null;
+
+  const files = (await collectMarkdown(root)).filter((f) => f.path.toLowerCase() !== 'log.md');
   vault = buildVault(files);
   issues = lintVault(vault);
   saveRecents([root, ...getRecents().filter((p) => p !== root)]);
-  renderRecents();
+  recentPopEl.hidden = true;
+  refreshRecentViews();
   vaultPathEl.textContent = `${basenameOf(root)} · ${vault.pages.length} pages`;
   vaultPathEl.title = root;
   emptyEl.hidden = true;
   commandEl.hidden = false;
+  closeSidePanels();
   renderLegend();
   renderGraph(buildGraph(vault));
+  updateExclusions();
 }
 
 function renderLegend(): void {
@@ -175,6 +311,7 @@ function renderGraph(graph: Graph): void {
   simulation?.stop();
   const { width, height } = svg.getBoundingClientRect();
   const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
+  simNodes = nodes;
   const links: SimulationLinkDatum<SimNode>[] = graph.edges.map((e) => ({
     source: e.source,
     target: e.target,
@@ -238,6 +375,10 @@ function renderGraph(graph: Graph): void {
       nodeEls[i].setAttribute('transform', `translate(${node.x ?? 0}, ${node.y ?? 0})`);
     }
   };
+  refreshPositions = updatePositions;
+
+  centerX = forceX<SimNode>(width / 2).strength(0.045);
+  centerY = forceY<SimNode>(height / 2).strength(0.055);
 
   simulation = forceSimulation(nodes)
     .force(
@@ -247,9 +388,10 @@ function renderGraph(graph: Graph): void {
         .distance(95),
     )
     .force('charge', forceManyBody().strength(-320))
-    .force('x', forceX(width / 2).strength(0.045))
-    .force('y', forceY(height / 2).strength(0.055))
+    .force('x', centerX)
+    .force('y', centerY)
     .force('collide', forceCollide(30))
+    .force('panels', panelForce)
     .on('tick', updatePositions);
 
   if (reducedMotion) {
@@ -268,8 +410,8 @@ function renderGraph(graph: Graph): void {
 
 /* Dragging: pointer events straight on the node group (the graph is hand-run
    SVG, not d3-selection). While dragging, fx/fy make the pointer authoritative
-   over the simulation; on release they stay set, pinning the node while the
-   rest of the graph keeps responding. */
+   over the simulation — including over the panel force; on release the drop
+   point is nudged clear of any panel, then stays pinned. */
 function attachDrag(g: SVGGElement, node: SimNode): void {
   let activePointer: number | null = null;
   let moved = false;
@@ -284,6 +426,12 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
     } catch {
       /* synthetic pointers are never captured */
     }
+    // Respect the drag's intent, but never let a node rest somewhere
+    // unreachable: if it was dropped inside a panel, move it (pin included)
+    // to the nearest point just outside.
+    const nudged = nudgeOutside(node.fx ?? node.x ?? 0, node.fy ?? node.y ?? 0);
+    node.fx = nudged.x;
+    node.fy = nudged.y;
     g.classList.add('pinned');
     simulation?.alphaTarget(reducedMotion ? 0 : AMBIENT_ALPHA);
   };
@@ -394,6 +542,7 @@ function select(id: string): void {
 
   sidebar.append(heading, meta, lintBox, body);
   detailEl.hidden = false;
+  updateExclusions();
 }
 
 function deselect(): void {
@@ -402,17 +551,231 @@ function deselect(): void {
   svg.querySelectorAll('.node.selected').forEach((el) => el.classList.remove('selected'));
   svg.querySelectorAll('.node.faded').forEach((el) => el.classList.remove('faded'));
   svg.querySelectorAll('line.edge').forEach((el) => el.classList.remove('lit', 'faded'));
+  updateExclusions();
 }
 
+/* Operation panels: lint and log share the left dock, one at a time -------- */
+function syncOpButtons(): void {
+  opLintEl.classList.toggle('active', !lintPanelEl.hidden);
+  opLintEl.setAttribute('aria-pressed', String(!lintPanelEl.hidden));
+  opLogEl.classList.toggle('active', !logPanelEl.hidden);
+  opLogEl.setAttribute('aria-pressed', String(!logPanelEl.hidden));
+}
+
+function closeSidePanels(): void {
+  lintPanelEl.hidden = true;
+  logPanelEl.hidden = true;
+  syncOpButtons();
+  updateExclusions();
+}
+
+function toggleSidePanel(which: 'lint' | 'log'): void {
+  const target = which === 'lint' ? lintPanelEl : logPanelEl;
+  const other = which === 'lint' ? logPanelEl : lintPanelEl;
+  const opening = target.hidden;
+  other.hidden = true;
+  target.hidden = !opening;
+  if (opening) {
+    if (which === 'lint') renderLintPanel();
+    else renderLogPanel();
+  }
+  syncOpButtons();
+  updateExclusions();
+}
+
+function renderLintPanel(): void {
+  if (!vault) return;
+  lintSubEl.textContent = `${issues.length} issue${issues.length === 1 ? '' : 's'} · ${vault.pages.length} pages · deterministic rules`;
+  lintBodyEl.innerHTML = '';
+
+  if (issues.length === 0) {
+    const clean = document.createElement('p');
+    clean.className = 'lint-clean';
+    clean.textContent = 'No issues. Clean copy.';
+    lintBodyEl.appendChild(clean);
+  } else {
+    for (const page of vault.pages) {
+      const pageIssues = issues.filter((issue) => issue.page === page.id);
+      if (pageIssues.length === 0) continue;
+      const group = document.createElement('div');
+      group.className = 'lint-group';
+      const name = document.createElement('button');
+      name.className = 'lint-page-name';
+      name.textContent = page.id;
+      name.addEventListener('click', () => select(page.id));
+      group.appendChild(name);
+      for (const issue of pageIssues) {
+        const row = document.createElement('button');
+        row.className = `issue issue-${issue.rule}`;
+        row.dataset.rule = issue.rule;
+        row.textContent = issue.message;
+        row.addEventListener('click', () => select(issue.page));
+        group.appendChild(row);
+      }
+      lintBodyEl.appendChild(group);
+    }
+  }
+
+  // The agent-backed checks aren't built yet; they keep their slot so the
+  // panel doesn't need a redesign when they arrive.
+  const agent = document.createElement('div');
+  agent.className = 'agent-section';
+  const agentLabel = document.createElement('p');
+  agentLabel.className = 'recent-label';
+  agentLabel.textContent = 'Requires agent';
+  agent.appendChild(agentLabel);
+  const checks: Array<[string, string]> = [
+    ['Contradictions', 'Claims that disagree between pages.'],
+    ['Coverage gaps', "Questions the vault can't answer yet."],
+    ['Stale claims', 'Facts likely to have aged out of date.'],
+  ];
+  for (const [name, desc] of checks) {
+    const row = document.createElement('div');
+    row.className = 'agent-check';
+    const title = document.createElement('span');
+    title.className = 'agent-check-name';
+    title.textContent = name;
+    const soon = document.createElement('span');
+    soon.className = 'soon';
+    soon.textContent = 'soon';
+    const body = document.createElement('p');
+    body.className = 'agent-check-desc';
+    body.textContent = desc;
+    row.append(title, soon, body);
+    agent.appendChild(row);
+  }
+  lintBodyEl.appendChild(agent);
+}
+
+interface LogEntry {
+  date: string;
+  op: string | null;
+  title: string;
+  body: string;
+}
+
+/** Parse `## [date] operation | title` entries; null if none match. */
+function parseLog(markdown: string): LogEntry[] | null {
+  const HEAD = /^##\s*\[([^\]]+)\]\s*([A-Za-z-]+)?\s*(?:\|\s*)?(.*)$/;
+  const entries: LogEntry[] = [];
+  let current: LogEntry | null = null;
+  for (const line of markdown.split(/\r?\n/)) {
+    const match = HEAD.exec(line);
+    if (match) {
+      if (current) entries.push(current);
+      current = { date: match[1], op: match[2] ?? null, title: match[3].trim(), body: '' };
+    } else if (current) {
+      current.body += `${line}\n`;
+    }
+  }
+  if (current) entries.push(current);
+  return entries.length > 0 ? entries : null;
+}
+
+function renderLogPanel(): void {
+  logBodyEl.innerHTML = '';
+  if (logRaw === null) {
+    logSubEl.textContent = 'no log.md in this vault';
+    const empty = document.createElement('p');
+    empty.className = 'log-empty';
+    empty.textContent =
+      'No log yet. Once ingest and query run against this vault, every ' +
+      'operation is recorded here — what changed, when, and why.';
+    logBodyEl.appendChild(empty);
+    return;
+  }
+  const entries = parseLog(logRaw);
+  if (entries === null) {
+    logSubEl.textContent = 'log.md · unstructured';
+    const raw = document.createElement('pre');
+    raw.className = 'log-raw';
+    raw.textContent = logRaw.trim();
+    logBodyEl.appendChild(raw);
+    return;
+  }
+  logSubEl.textContent = `log.md · ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} · newest first`;
+  for (const entry of [...entries].reverse()) {
+    const item = document.createElement('div');
+    item.className = 'log-entry';
+    const head = document.createElement('div');
+    head.className = 'log-entry-head';
+    const date = document.createElement('span');
+    date.className = 'log-date';
+    date.textContent = entry.date;
+    head.appendChild(date);
+    if (entry.op) {
+      const op = document.createElement('span');
+      op.className = 'log-op';
+      op.textContent = entry.op;
+      head.appendChild(op);
+    }
+    const title = document.createElement('span');
+    title.className = 'log-title';
+    title.textContent = entry.title;
+    const body = document.createElement('p');
+    body.className = 'log-body';
+    body.textContent = entry.body.trim();
+    item.append(head, title);
+    if (entry.body.trim()) item.appendChild(body);
+    logBodyEl.appendChild(item);
+  }
+}
+
+/* Wiring -------------------------------------------------------------------- */
 document.getElementById('open-vault')!.addEventListener('click', () => void chooseVault());
 document.getElementById('empty-open')!.addEventListener('click', () => void chooseVault());
 document.getElementById('detail-close')!.addEventListener('click', deselect);
-svg.addEventListener('click', deselect);
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') deselect();
+opLintEl.addEventListener('click', () => toggleSidePanel('lint'));
+opLogEl.addEventListener('click', () => toggleSidePanel('log'));
+document.querySelectorAll<HTMLButtonElement>('.panel-close[data-panel]').forEach((btn) =>
+  btn.addEventListener('click', closeSidePanels),
+);
+
+recentToggleEl.addEventListener('click', (event) => {
+  event.stopPropagation();
+  recentPopEl.hidden = !recentPopEl.hidden;
+  if (!recentPopEl.hidden) renderRecentsInto(recentPopEl);
+  updateExclusions();
+});
+document.addEventListener('click', (event) => {
+  if (recentPopEl.hidden) return;
+  if (!recentPopEl.contains(event.target as Node)) {
+    recentPopEl.hidden = true;
+    updateExclusions();
+  }
 });
 
-renderRecents();
+svg.addEventListener('click', deselect);
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!recentPopEl.hidden) {
+    recentPopEl.hidden = true;
+    updateExclusions();
+    return;
+  }
+  if (!lintPanelEl.hidden || !logPanelEl.hidden) {
+    closeSidePanels();
+    return;
+  }
+  deselect();
+});
+
+window.addEventListener('resize', () => {
+  updateExclusions();
+  const { innerWidth, innerHeight } = window;
+  centerX.x(innerWidth / 2);
+  centerY.y(innerHeight / 2);
+  if (!simulation) return;
+  if (reducedMotion) {
+    simulation.tick(120);
+    refreshPositions?.();
+  } else {
+    simulation.alpha(Math.max(simulation.alpha(), 0.25));
+  }
+});
+
+renderRecentsInto(recentEl);
+updateExclusions();
 
 // Dev-only test hooks (stripped from production builds): VITE_DEV_VAULT
 // auto-opens a vault on launch and VITE_DEV_SELECT auto-selects a node, then
@@ -421,38 +784,77 @@ if (import.meta.env.DEV && import.meta.env.VITE_DEV_VAULT) {
   void (async () => {
     const report = (payload: unknown) =>
       fetch('/__dev-report', { method: 'POST', body: JSON.stringify(payload) });
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const nodePos = (g: Element): { x: number; y: number } => {
+      const m = /translate\((-?[\d.]+),\s*(-?[\d.]+)\)/.exec(g.getAttribute('transform') ?? '');
+      return { x: m ? parseFloat(m[1]) : 0, y: m ? parseFloat(m[2]) : 0 };
+    };
+    const rawPanelRects = () =>
+      [...document.querySelectorAll<HTMLElement>('.glass')]
+        .filter((el) => !el.hidden)
+        .map((el) => el.getBoundingClientRect());
+    const insideAnyPanel = (x: number, y: number) =>
+      rawPanelRects().some((r) => x > r.left && x < r.right && y > r.top && y < r.bottom);
     try {
       await openVault(import.meta.env.VITE_DEV_VAULT as string);
+      await sleep(1500); // let the simulation settle and clear the panels
 
-      // Drag check: synthetic pointer sequence on the first node; it should
-      // end up pinned at the drop point.
+      const nodesInsidePanels = [...svg.querySelectorAll('.node')].filter((g) => {
+        const p = nodePos(g);
+        return insideAnyPanel(p.x, p.y);
+      }).length;
+
+      // Drag a node to the middle of the toolbar; on release it must be
+      // nudged clear, stay pinned, and remain clickable.
+      const toolbarRect = commandEl.getBoundingClientRect();
+      const target = {
+        x: toolbarRect.left + toolbarRect.width / 2,
+        y: toolbarRect.top + toolbarRect.height / 2,
+      };
       const firstNode = svg.querySelector('.node') as SVGGElement;
-      const match = /translate\((-?[\d.]+),\s*(-?[\d.]+)\)/.exec(
-        firstNode.getAttribute('transform') ?? '',
-      );
-      const x0 = match ? parseFloat(match[1]) : 0;
-      const y0 = match ? parseFloat(match[2]) : 0;
+      const from = nodePos(firstNode);
       const pointer = { bubbles: true, pointerId: 1, button: 0 };
       firstNode.dispatchEvent(
-        new PointerEvent('pointerdown', { ...pointer, clientX: x0, clientY: y0 }),
+        new PointerEvent('pointerdown', { ...pointer, clientX: from.x, clientY: from.y }),
       );
       firstNode.dispatchEvent(
-        new PointerEvent('pointermove', { ...pointer, clientX: x0 + 60, clientY: y0 + 40 }),
+        new PointerEvent('pointermove', { ...pointer, clientX: target.x, clientY: target.y }),
       );
       firstNode.dispatchEvent(
-        new PointerEvent('pointerup', { ...pointer, clientX: x0 + 60, clientY: y0 + 40 }),
+        new PointerEvent('pointerup', { ...pointer, clientX: target.x, clientY: target.y }),
       );
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      const after = /translate\((-?[\d.]+),\s*(-?[\d.]+)\)/.exec(
-        firstNode.getAttribute('transform') ?? '',
-      );
+      await sleep(400);
+      const dropped = nodePos(firstNode);
       const drag = {
         pinned: firstNode.classList.contains('pinned'),
-        atDropPoint:
-          after !== null &&
-          Math.abs(parseFloat(after[1]) - (x0 + 60)) < 1 &&
-          Math.abs(parseFloat(after[2]) - (y0 + 40)) < 1,
+        droppedInsidePanel: insideAnyPanel(dropped.x, dropped.y),
+        clearOfToolbar: !(
+          dropped.x > toolbarRect.left &&
+          dropped.x < toolbarRect.right &&
+          dropped.y > toolbarRect.top &&
+          dropped.y < toolbarRect.bottom
+        ),
       };
+      window.dispatchEvent(new Event('resize')); // exercise the resize path
+
+      opLintEl.click();
+      const lint = {
+        open: !lintPanelEl.hidden,
+        issueRows: lintBodyEl.querySelectorAll('button.issue').length,
+        agentChecks: lintBodyEl.querySelectorAll('.agent-check').length,
+        sub: lintSubEl.textContent,
+      };
+      opLogEl.click();
+      const log = {
+        open: !logPanelEl.hidden,
+        lintClosed: lintPanelEl.hidden,
+        hasLog: logRaw !== null,
+        entries: logBodyEl.querySelectorAll('.log-entry').length,
+        firstEntryDate: logBodyEl.querySelector('.log-date')?.textContent ?? null,
+        emptyText: logBodyEl.querySelector('.log-empty')?.textContent?.slice(0, 60) ?? null,
+        sub: logSubEl.textContent,
+      };
+      opLogEl.click(); // close again
 
       const selectId = import.meta.env.VITE_DEV_SELECT as string | undefined;
       if (selectId) select(selectId);
@@ -465,7 +867,14 @@ if (import.meta.env.DEV && import.meta.env.VITE_DEV_VAULT) {
         orphans: issues.filter((i) => i.rule === 'orphan').map((i) => i.page),
         emptyStateDisplay: getComputedStyle(emptyEl).display,
         recentVaults: getRecents(),
+        ops: {
+          ingestDisabled: (document.getElementById('op-ingest') as HTMLButtonElement).disabled,
+          queryDisabled: (document.getElementById('op-query') as HTMLButtonElement).disabled,
+        },
+        nodesInsidePanels,
         drag,
+        lint,
+        log,
         focus: {
           focused: svg.classList.contains('focused'),
           fadedNodes: svg.querySelectorAll('.node.faded').length,
