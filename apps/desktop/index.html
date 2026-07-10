@@ -8,9 +8,17 @@
   </head>
   <body>
     <svg id="graph" aria-label="Vault graph"></svg>
-    <p id="hint">Open a vault to explore its graph.</p>
-    <header id="command" class="glass">
-      <button id="open-vault">Open vault</button>
+    <section id="empty" class="glass" aria-label="No vault open">
+      <h1>eva-wiki</h1>
+      <p class="empty-desc">
+        Open a folder of markdown pages to read it as a graph — wiki-links
+        become edges, frontmatter types become inks.
+      </p>
+      <button id="empty-open" class="btn-stamp">Open vault</button>
+      <div id="recent"></div>
+    </section>
+    <header id="command" class="glass" hidden>
+      <button id="open-vault" class="btn-stamp">Open vault</button>
       <span id="vault-path">No vault open</span>
     </header>
     <aside id="detail" class="glass" hidden>

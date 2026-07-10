@@ -34,6 +34,12 @@
   box-sizing: border-box;
 }
 
+/* Author `display` values on panels would otherwise override the UA's
+   [hidden] rule — this guard makes the hidden attribute always win. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   height: 100vh;
@@ -64,20 +70,6 @@ body::after {
   width: 100vw;
   height: 100vh;
   z-index: 1;
-}
-
-#hint {
-  position: fixed;
-  z-index: 1;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  font-family: var(--font-data);
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  color: var(--ink-dim);
-  pointer-events: none;
 }
 
 /* ---------------------------------------------------------------------------
@@ -117,18 +109,8 @@ body::after {
     0 5px 14px rgba(60, 55, 40, 0.11);
 }
 
-/* Command pill ------------------------------------------------------------ */
-#command {
-  top: 16px;
-  left: 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px 8px 8px;
-  border-radius: 999px;
-}
-
-#open-vault {
+/* Shared red-pen action button */
+.btn-stamp {
   font-family: var(--font-data);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -142,15 +124,109 @@ body::after {
   transition: background 200ms ease, color 200ms ease;
 }
 
-#open-vault:hover {
+.btn-stamp:hover {
   background: var(--red);
   color: var(--paper);
 }
 
-#open-vault:focus-visible,
-#detail-close:focus-visible {
+.btn-stamp:focus-visible,
+#detail-close:focus-visible,
+.recent-row:focus-visible {
   outline: 2px solid var(--red);
   outline-offset: 2px;
+}
+
+/* Empty state: a centered vellum sheet, the app's front matter ------------- */
+#empty {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(400px, calc(100vw - 48px));
+  padding: 26px 28px 22px;
+}
+
+#empty h1 {
+  margin: 0 0 8px;
+  font-family: var(--font-data);
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.empty-desc {
+  margin: 0 0 18px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #45443c;
+}
+
+#recent {
+  margin-top: 22px;
+}
+
+.recent-label {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.recent-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 6px;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.recent-row:hover {
+  background: var(--recess);
+}
+
+.recent-name {
+  display: block;
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.recent-path {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-error {
+  margin: 8px 0 0;
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--red);
+}
+
+/* Command pill ------------------------------------------------------------ */
+#command {
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px 8px 8px;
+  border-radius: 999px;
 }
 
 #vault-path {
@@ -313,10 +389,12 @@ body::after {
 /* Graph marks --------------------------------------------------------------
    Ink on paper: solid discs with a paper ring and a soft graphite lift —
    no additive glow on a light field. Selection is the red pen: a dashed
-   annotation ring being drawn around the node, its edges turned to redlines. */
+   annotation ring being drawn around the node, its edges turned to redlines,
+   and everything outside the node's neighborhood receding into the page. */
 line.edge {
   stroke: rgba(38, 37, 31, 0.16);
   stroke-width: 1;
+  transition: opacity 250ms ease;
 }
 
 line.edge.lit {
@@ -326,7 +404,13 @@ line.edge.lit {
 }
 
 .node {
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  transition: opacity 250ms ease;
+}
+
+.node:active {
+  cursor: grabbing;
 }
 
 .node circle.core {
@@ -353,6 +437,16 @@ line.edge.lit {
   }
 }
 
+/* Focus: with a selection active, everything outside the selected node's
+   neighborhood recedes — dimmed, never hidden. */
+#graph.focused .node.faded {
+  opacity: 0.16;
+}
+
+#graph.focused line.edge.faded {
+  opacity: 0.22;
+}
+
 .node text {
   fill: rgba(38, 37, 31, 0.72);
   font-family: var(--font-data);
@@ -372,8 +466,11 @@ line.edge.lit {
     animation: none;
   }
 
+  .node,
+  line.edge,
   .glass,
-  #open-vault,
+  .btn-stamp,
+  .recent-row,
   #detail-close {
     transition: none;
   }
