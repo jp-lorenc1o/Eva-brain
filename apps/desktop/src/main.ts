@@ -116,6 +116,29 @@ function updateExclusions(): void {
     simulation?.tick(1);
     refreshPositions?.();
   }
+  // Panels also define the usable field: keep the centering forces aimed at
+  // the middle of the space between top- and bottom-docked panels.
+  const center = usableCenter();
+  centerX.x(center.x);
+  centerY.y(center.y);
+}
+
+/** Center of the vertical space between top-docked and bottom-docked panels
+    (side panels don't constrain the vertical field). */
+function usableCenter(): { x: number; y: number } {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  let top = 0;
+  let bottom = h;
+  for (const el of document.querySelectorAll<HTMLElement>('.glass')) {
+    if (el.hidden) continue;
+    const r = el.getBoundingClientRect();
+    const mid = (r.top + r.bottom) / 2;
+    if (mid < h / 3) top = Math.max(top, r.bottom + PANEL_MARGIN);
+    else if (mid > (2 * h) / 3) bottom = Math.min(bottom, r.top - PANEL_MARGIN);
+  }
+  if (bottom - top < h / 3) return { x: w / 2, y: h / 2 };
+  return { x: w / 2, y: (top + bottom) / 2 };
 }
 
 const insideRect = (x: number, y: number, r: Rect): boolean =>
@@ -309,8 +332,17 @@ function renderLegend(): void {
 
 function renderGraph(graph: Graph): void {
   simulation?.stop();
-  const { width, height } = svg.getBoundingClientRect();
-  const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
+  // Seed nodes around the usable center: d3's default seeding spirals around
+  // the origin — the top-left corner, inside the toolbar's exclusion zone —
+  // which strands the cluster along the top edge once the settle phase is
+  // spent fighting the panel force.
+  const center = usableCenter();
+  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+  const nodes: SimNode[] = graph.nodes.map((n, i) => ({
+    ...n,
+    x: center.x + 42 * Math.sqrt(i + 0.5) * Math.cos(i * GOLDEN_ANGLE),
+    y: center.y + 42 * Math.sqrt(i + 0.5) * Math.sin(i * GOLDEN_ANGLE),
+  }));
   simNodes = nodes;
   const links: SimulationLinkDatum<SimNode>[] = graph.edges.map((e) => ({
     source: e.source,
@@ -377,8 +409,8 @@ function renderGraph(graph: Graph): void {
   };
   refreshPositions = updatePositions;
 
-  centerX = forceX<SimNode>(width / 2).strength(0.045);
-  centerY = forceY<SimNode>(height / 2).strength(0.055);
+  centerX = forceX<SimNode>(center.x).strength(0.045);
+  centerY = forceY<SimNode>(center.y).strength(0.055);
 
   simulation = forceSimulation(nodes)
     .force(
@@ -761,10 +793,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('resize', () => {
-  updateExclusions();
-  const { innerWidth, innerHeight } = window;
-  centerX.x(innerWidth / 2);
-  centerY.y(innerHeight / 2);
+  updateExclusions(); // also re-aims the centering forces at the usable center
   if (!simulation) return;
   if (reducedMotion) {
     simulation.tick(120);
@@ -803,6 +832,31 @@ if (import.meta.env.DEV && import.meta.env.VITE_DEV_VAULT) {
         const p = nodePos(g);
         return insideAnyPanel(p.x, p.y);
       }).length;
+
+      // Vertical distribution: nodes should spread around the usable center,
+      // not bunch along the top edge — at default size and when taller.
+      const yStats = () => {
+        const ys = [...svg.querySelectorAll('.node')].map((g) => nodePos(g).y);
+        return {
+          h: window.innerHeight,
+          min: Math.round(Math.min(...ys)),
+          max: Math.round(Math.max(...ys)),
+          mean: Math.round(ys.reduce((a, b) => a + b, 0) / ys.length),
+        };
+      };
+      const spread: { default: unknown; tall: unknown } = { default: yStats(), tall: null };
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        await win.setSize(new LogicalSize(1200, 1000));
+        await sleep(1800);
+        spread.tall = yStats();
+        await win.setSize(new LogicalSize(1200, 800));
+        await sleep(800);
+      } catch (error) {
+        spread.tall = { error: String(error) };
+      }
 
       // Drag a node to the middle of the toolbar; on release it must be
       // nudged clear, stay pinned, and remain clickable.
@@ -872,6 +926,7 @@ if (import.meta.env.DEV && import.meta.env.VITE_DEV_VAULT) {
           queryDisabled: (document.getElementById('op-query') as HTMLButtonElement).disabled,
         },
         nodesInsidePanels,
+        verticalSpread: spread,
         drag,
         lint,
         log,
