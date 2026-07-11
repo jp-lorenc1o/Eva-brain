@@ -13,8 +13,9 @@ wiki pages, agent instructions, and local change history portable across tools.
   building, and deterministic structural linting. Includes a 16-page fixture.
 - `packages/eva-mcp` — read-only MCP navigation tools for an agent: search,
   page reads, neighbors, and shortest paths.
-- `apps/desktop` — Tauri v2 + Vite graph explorer plus a Claude CLI-backed,
-  worktree-isolated ingest, cited query, and read-only Health Check flow.
+- `apps/desktop` — Tauri v2 + Vite graph explorer plus Codex CLI and Claude
+  Code adapters for worktree-isolated ingest, cited query, and read-only
+  Health Check.
 - `schema/` and `templates/vault/` — the generic V1 vault contract and the
   starter infrastructure seeded into an Eva-managed vault.
 
@@ -31,9 +32,10 @@ npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 Choose **New brain** from the opening screen and name the knowledge project.
 The setup sheet asks for its working language, AI runtime, and optional
 purpose; Eva stores that profile in `EVA.md`, creates a starter brain in
-`~/Documents/Eva/Brains`, then opens the graph. Eva uses Git only locally to
-make reviews and undoable history possible; it needs no GitHub account, remote,
-or Git identity. Select
+`~/Documents/Eva/Brains`, then opens the graph. Choose Codex or Claude Code;
+Eva uses the CLI already signed in on the computer and never stores API keys or
+credentials. Eva uses Git only locally to make reviews and undoable history
+possible; it needs no GitHub account, remote, or Git identity. Select
 **Ingest** to add the first source. Select **Query** to ask the maintained
 brain a question; useful answers can be saved as a reviewable analysis page.
 Use **Open brain** to choose from Eva's managed brain library. **Import a

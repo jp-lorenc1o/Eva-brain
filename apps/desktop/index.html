@@ -145,14 +145,23 @@
               <option value="Português"></option>
             </datalist>
           </div>
-          <div>
-            <label class="form-label" for="new-vault-agent">AI runtime</label>
-            <select id="new-vault-agent" class="text-input compact">
-              <option value="claude">Claude CLI</option>
-            </select>
-            <p class="field-hint">More runtimes can use this same brain later.</p>
-          </div>
         </div>
+        <fieldset class="runtime-fieldset">
+          <legend class="form-label">AI runtime</legend>
+          <div class="runtime-choices">
+            <label class="runtime-choice">
+              <input name="new-vault-agent" type="radio" value="codex" checked />
+              <span class="runtime-choice-name">Codex</span>
+              <span class="runtime-choice-detail">Use the Codex CLI already signed in on this Mac.</span>
+            </label>
+            <label class="runtime-choice">
+              <input name="new-vault-agent" type="radio" value="claude" />
+              <span class="runtime-choice-name">Claude Code</span>
+              <span class="runtime-choice-detail">Use the Claude CLI already signed in on this Mac.</span>
+            </label>
+          </div>
+          <p class="field-hint">Eva stores no credentials. The selected runtime is saved with this local brain.</p>
+        </fieldset>
         <label class="form-label" for="new-vault-purpose">What is this brain for? <span class="optional">Optional</span></label>
         <textarea id="new-vault-purpose" class="purpose-input" rows="2" maxlength="240" placeholder="Track a research topic, plan a trip, understand a company…"></textarea>
         <div class="brain-home">

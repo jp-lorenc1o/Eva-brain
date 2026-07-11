@@ -970,8 +970,7 @@ button.query-citation:hover {
 
 .setup-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr;
   margin-bottom: 14px;
 }
 
@@ -980,8 +979,90 @@ button.query-citation:hover {
   min-width: 0;
 }
 
-select.text-input.compact {
-  height: 39px;
+.runtime-fieldset {
+  min-width: 0;
+  margin: 0 0 15px;
+  padding: 0;
+  border: 0;
+}
+
+.runtime-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.runtime-choice {
+  position: relative;
+  display: block;
+  min-height: 82px;
+  padding: 10px 10px 9px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(255, 255, 253, 0.42);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.runtime-choice::before {
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 6px;
+  width: 2px;
+  content: '';
+  background: transparent;
+  transition: background 150ms ease;
+}
+
+.runtime-choice:hover {
+  border-color: rgba(110, 104, 84, 0.45);
+  background: rgba(236, 235, 225, 0.68);
+}
+
+.runtime-choice:has(input:checked) {
+  border-color: rgba(203, 24, 29, 0.68);
+  background: rgba(203, 24, 29, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(203, 24, 29, 0.08);
+}
+
+.runtime-choice:has(input:checked)::before {
+  background: var(--red);
+}
+
+.runtime-choice:focus-within {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+.runtime-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.runtime-choice-name,
+.runtime-choice-detail {
+  display: block;
+}
+
+.runtime-choice-name {
+  color: var(--ink);
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.runtime-choice-detail {
+  margin-top: 5px;
+  color: var(--ink-dim);
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .field-hint {

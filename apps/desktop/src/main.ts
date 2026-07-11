@@ -101,7 +101,9 @@ const newVaultEl = document.getElementById('new-vault') as HTMLElement;
 const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
 const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
 const newVaultLanguageEl = document.getElementById('new-vault-language') as HTMLInputElement;
-const newVaultAgentEl = document.getElementById('new-vault-agent') as HTMLSelectElement;
+const newVaultAgentEls = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="new-vault-agent"]'),
+);
 const newVaultPurposeEl = document.getElementById('new-vault-purpose') as HTMLTextAreaElement;
 const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElement;
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
@@ -458,15 +460,28 @@ function validVaultName(name: string): boolean {
   );
 }
 
+function selectedNewVaultAgent(): string {
+  return newVaultAgentEls.find((input) => input.checked)?.value ?? '';
+}
+
+function resetNewVaultAgent(): void {
+  newVaultAgentEls.forEach((input) => {
+    input.checked = input.value === 'codex';
+  });
+}
+
 function updateNewVaultCreateState(): void {
-  newVaultCreateEl.disabled = !validVaultName(newVaultNameEl.value) || !newVaultLanguageEl.value.trim();
+  newVaultCreateEl.disabled =
+    !validVaultName(newVaultNameEl.value) ||
+    !newVaultLanguageEl.value.trim() ||
+    !selectedNewVaultAgent();
 }
 
 function closeNewVault(): void {
   newVaultEl.hidden = true;
   newVaultNameEl.value = '';
   newVaultLanguageEl.value = 'English';
-  newVaultAgentEl.value = 'claude';
+  resetNewVaultAgent();
   newVaultPurposeEl.value = '';
   setNewVaultError(null);
   updateNewVaultCreateState();
@@ -477,7 +492,7 @@ function showNewVault(): void {
   newVaultEl.hidden = false;
   newVaultNameEl.value = '';
   newVaultLanguageEl.value = 'English';
-  newVaultAgentEl.value = 'claude';
+  resetNewVaultAgent();
   newVaultPurposeEl.value = '';
   setNewVaultError(null);
   updateNewVaultCreateState();
@@ -499,7 +514,7 @@ async function createNewVault(): Promise<void> {
     const root = await invoke<string>('brain_create', {
       name,
       language,
-      agent: newVaultAgentEl.value,
+      agent: selectedNewVaultAgent(),
       purpose: newVaultPurposeEl.value.trim(),
     });
     closeNewVault();
@@ -1467,10 +1482,12 @@ newVaultLanguageEl.addEventListener('input', () => {
   setNewVaultError(null);
   updateNewVaultCreateState();
 });
-newVaultAgentEl.addEventListener('change', () => {
-  setNewVaultError(null);
-  updateNewVaultCreateState();
-});
+newVaultAgentEls.forEach((input) =>
+  input.addEventListener('change', () => {
+    setNewVaultError(null);
+    updateNewVaultCreateState();
+  }),
+);
 newVaultFormEl.addEventListener('submit', (event) => {
   event.preventDefault();
   void createNewVault();

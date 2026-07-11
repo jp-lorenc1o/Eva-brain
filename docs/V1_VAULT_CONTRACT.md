@@ -81,11 +81,12 @@ analysis decision.
 
 ## Runtime boundary
 
-The vault format and MCP read tools are agent-neutral. The current desktop
-implementation provides a Claude CLI adapter as the first ingest runtime.
-Future Codex, OpenCode, and other adapters must receive the same vault path,
-`EVA.md` contract, read-only navigation tools, and worktree/review guarantees;
-they must not change the on-disk format.
+The vault format is agent-neutral. The current desktop implementation supports
+Codex CLI and Claude Code, with the chosen runtime recorded in the brain's
+local `EVA.md` profile. Claude uses Eva's read-only MCP navigation tools;
+Codex uses its sandboxed local filesystem tools. Both receive the same brain
+path, `EVA.md` contract, and worktree/review guarantees. Future runtimes must
+preserve those guarantees and must not change the on-disk format.
 
 ## Privacy boundary
 
