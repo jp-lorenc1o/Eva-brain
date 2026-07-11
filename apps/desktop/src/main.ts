@@ -1,5 +1,7 @@
 import '@fontsource/fragment-mono';
 import '@fontsource-variable/instrument-sans';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import {
@@ -29,9 +31,12 @@ const TYPE_COLORS: Record<string, string> = {
   person: '#5c7150',
   project: '#a98436',
   note: '#7c5b78',
+  entity: '#5c7150',
+  summary: '#8c6a4f',
+  log: '#8b887a',
 };
 const FALLBACK_COLOR = '#a6a294';
-const TYPE_ORDER = ['index', 'concept', 'person', 'project', 'note'];
+const TYPE_ORDER = ['index', 'entity', 'concept', 'summary', 'person', 'project', 'note', 'log'];
 
 const colorFor = (type: string | null): string =>
   (type !== null && TYPE_COLORS[type]) || FALLBACK_COLOR;
@@ -66,21 +71,31 @@ const lintBodyEl = document.getElementById('lint-body') as HTMLElement;
 const logPanelEl = document.getElementById('log-panel') as HTMLElement;
 const logSubEl = document.getElementById('log-sub') as HTMLElement;
 const logBodyEl = document.getElementById('log-body') as HTMLElement;
+const opIngestEl = document.getElementById('op-ingest') as HTMLButtonElement;
 const opLintEl = document.getElementById('op-lint') as HTMLButtonElement;
 const opLogEl = document.getElementById('op-log') as HTMLButtonElement;
+const ingestStatusEl = document.getElementById('ingest-status') as HTMLElement;
+const reviewEl = document.getElementById('review') as HTMLElement;
+const reviewSubEl = document.getElementById('review-sub') as HTMLElement;
+const reviewIssuesEl = document.getElementById('review-issues') as HTMLElement;
+const reviewPatchEl = document.getElementById('review-patch') as HTMLElement;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const AMBIENT_ALPHA = 0.012;
 const PANEL_MARGIN = 28;
+const INFRA_FILES = new Set(['log.md', 'eva.md', 'claude.md']);
 
 let vault: Vault | null = null;
 let issues: LintIssue[] = [];
 let logRaw: string | null = null;
+let currentVault: string | null = null;
 let simulation: Simulation<SimNode, SimulationLinkDatum<SimNode>> | null = null;
 let simNodes: SimNode[] = [];
 let refreshPositions: (() => void) | null = null;
 let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
+let reviewJobId: number | null = null;
+const agentActive = new Set<string>();
 
 /* Panel exclusion zones ------------------------------------------------------
    Every visible vellum sheet claims its bounding rect (plus a margin) as
@@ -208,10 +223,15 @@ async function collectMarkdown(root: string, rel = ''): Promise<VaultFile[]> {
   const files: VaultFile[] = [];
   const entries = await readDir(rel ? `${root}/${rel}` : root);
   for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
     const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory) {
+      // raw/ holds source documents, not wiki pages
+      if (rel === '' && entry.name === 'raw') continue;
       files.push(...(await collectMarkdown(root, entryRel)));
     } else if (entry.isFile && entry.name.toLowerCase().endsWith('.md')) {
+      // root-level infrastructure files are not wiki pages
+      if (rel === '' && INFRA_FILES.has(entry.name.toLowerCase())) continue;
       files.push({ path: entryRel, content: await readTextFile(`${root}/${entryRel}`) });
     }
   }
@@ -291,13 +311,15 @@ async function chooseVault(): Promise<void> {
 }
 
 async function openVault(root: string): Promise<void> {
-  // A root-level log.md is the vault's operation record, not wiki content:
-  // it feeds the Log view and stays out of the graph and the linter.
+  currentVault = root;
+  // Seed EVA.md/CLAUDE.md into agent-managed vaults (their own git root);
+  // read-only viewing of other folders is left untouched.
+  void invoke('ensure_schema', { vault: root }).catch(() => {});
   const rootEntries = await readDir(root);
   const logName = rootEntries.find((e) => e.isFile && e.name.toLowerCase() === 'log.md')?.name;
   logRaw = logName ? await readTextFile(`${root}/${logName}`) : null;
 
-  const files = (await collectMarkdown(root)).filter((f) => f.path.toLowerCase() !== 'log.md');
+  const files = await collectMarkdown(root);
   vault = buildVault(files);
   issues = lintVault(vault);
   saveRecents([root, ...getRecents().filter((p) => p !== root)]);
@@ -327,7 +349,7 @@ function renderLegend(): void {
     key.append(dot, document.createTextNode(type));
     legendEl.appendChild(key);
   }
-  legendEl.hidden = false;
+  legendEl.hidden = vault.pages.length === 0;
 }
 
 function renderGraph(graph: Graph): void {
@@ -380,6 +402,9 @@ function renderGraph(graph: Graph): void {
     const ring = document.createElementNS(SVG_NS, 'circle');
     ring.setAttribute('class', 'ring');
     ring.setAttribute('r', '15');
+    const pulse = document.createElementNS(SVG_NS, 'circle');
+    pulse.setAttribute('class', 'pulse');
+    pulse.setAttribute('r', '13');
     const circle = document.createElementNS(SVG_NS, 'circle');
     circle.setAttribute('class', 'core');
     circle.setAttribute('r', '8');
@@ -388,11 +413,12 @@ function renderGraph(graph: Graph): void {
     const label = document.createElementNS(SVG_NS, 'text');
     label.setAttribute('y', '24');
     label.textContent = node.title;
-    g.append(ring, circle, label);
+    g.append(ring, pulse, circle, label);
     attachDrag(g, node);
     svg.appendChild(g);
     return g;
   });
+  applyAgentActive();
 
   const updatePositions = () => {
     for (const [i, link] of links.entries()) {
@@ -753,12 +779,193 @@ function renderLogPanel(): void {
   }
 }
 
+/* Ingest ---------------------------------------------------------------------
+   The webview's whole job here: pick sources, invoke Rust, render events. */
+function setIngestStatus(text: string | null, working: boolean): void {
+  if (!text) {
+    ingestStatusEl.hidden = true;
+    return;
+  }
+  ingestStatusEl.hidden = false;
+  ingestStatusEl.textContent = text;
+  ingestStatusEl.classList.toggle('working', working);
+}
+
+function applyAgentActive(): void {
+  svg.querySelectorAll('.node').forEach((el) => {
+    el.classList.toggle('agent-active', agentActive.has(el.getAttribute('data-id')!));
+  });
+}
+
+function markAgentFile(rel: string): void {
+  if (!rel.toLowerCase().endsWith('.md')) return;
+  agentActive.add(rel.replace(/\.md$/i, ''));
+  applyAgentActive();
+}
+
+function clearAgentActive(): void {
+  agentActive.clear();
+  applyAgentActive();
+}
+
+async function startIngest(): Promise<void> {
+  if (!currentVault) return;
+  const picked = await open({
+    multiple: true,
+    title: 'Choose source documents to ingest',
+    filters: [{ name: 'Sources', extensions: ['txt', 'md', 'html', 'htm', 'pdf'] }],
+  });
+  const sources = Array.isArray(picked) ? picked : typeof picked === 'string' ? [picked] : [];
+  if (sources.length === 0) return;
+  try {
+    await invoke('ingest_enqueue', { vault: currentVault, sources });
+  } catch (error) {
+    setIngestStatus(String(error), false);
+  }
+}
+
+interface ReviewPayload {
+  jobId: number;
+  source: string;
+  patch: string;
+  newIssues: string[];
+  deletions: string[];
+  summary: string;
+}
+
+function showReview(p: ReviewPayload): void {
+  reviewJobId = p.jobId;
+  const parts = [
+    p.newIssues.length > 0 ? `${p.newIssues.length} new lint issue${p.newIssues.length === 1 ? '' : 's'}` : '',
+    p.deletions.length > 0 ? `${p.deletions.length} deletion${p.deletions.length === 1 ? '' : 's'}` : '',
+  ].filter(Boolean);
+  reviewSubEl.textContent = `${p.source} — held: ${parts.join(' · ')}`;
+  reviewIssuesEl.innerHTML = '';
+  for (const del of p.deletions) {
+    const item = document.createElement('div');
+    item.className = 'issue issue-broken-link';
+    item.dataset.rule = 'deletion';
+    item.textContent = `${del} would be deleted — deletions are never auto-merged`;
+    reviewIssuesEl.appendChild(item);
+  }
+  for (const issue of p.newIssues) {
+    const item = document.createElement('div');
+    item.className = 'issue issue-orphan';
+    item.dataset.rule = 'new lint issue';
+    item.textContent = issue;
+    reviewIssuesEl.appendChild(item);
+  }
+  reviewPatchEl.innerHTML = '';
+  for (const line of p.patch.split('\n')) {
+    const span = document.createElement('span');
+    span.textContent = `${line}\n`;
+    if (line.startsWith('diff ') || line.startsWith('+++') || line.startsWith('---')) {
+      span.className = 'diff-file';
+    } else if (line.startsWith('+')) {
+      span.className = 'diff-add';
+    } else if (line.startsWith('-')) {
+      span.className = 'diff-del';
+    }
+    reviewPatchEl.appendChild(span);
+  }
+  reviewEl.hidden = false;
+  updateExclusions();
+}
+
+async function decideReview(accept: boolean): Promise<void> {
+  if (reviewJobId === null) return;
+  const jobId = reviewJobId;
+  reviewJobId = null;
+  reviewEl.hidden = true;
+  updateExclusions();
+  try {
+    await invoke('ingest_decide', { jobId, accept });
+  } catch (error) {
+    setIngestStatus(String(error), false);
+  }
+}
+
+function forwardDev(tag: string, payload: unknown): void {
+  if (!import.meta.env.DEV || !import.meta.env.VITE_DEV_VAULT) return;
+  void fetch('/__dev-report', {
+    method: 'POST',
+    body: JSON.stringify({ ingest: tag, payload }),
+  }).catch(() => {});
+}
+
+interface JobInfo {
+  id: number;
+  sourceName: string;
+  status: string;
+}
+
+void listen('ingest:state', (event) => {
+  const p = event.payload as { current: JobInfo | null; queue: JobInfo[]; done: JobInfo[] };
+  if (p.current) {
+    setIngestStatus(
+      `ingesting ${p.current.sourceName}${p.queue.length > 0 ? ` · ${p.queue.length} queued` : ''}`,
+      true,
+    );
+  } else if (p.queue.length > 0) {
+    setIngestStatus(`${p.queue.length} queued — waiting on review`, false);
+  } else if (p.done.length > 0) {
+    const merged = p.done.filter((j) => j.status === 'merged').length;
+    setIngestStatus(`${merged}/${p.done.length} sources ingested`, false);
+  }
+  opIngestEl.classList.toggle('active', p.current !== null);
+  forwardDev('state', p);
+});
+
+void listen('ingest:activity', (event) => {
+  const p = event.payload as { jobId: number; kind: string; value: string };
+  if (p.kind === 'file') {
+    markAgentFile(p.value);
+    setIngestStatus(`agent → ${p.value}`, true);
+  }
+  forwardDev('activity', p);
+});
+
+void listen('ingest:merged', async (event) => {
+  clearAgentActive();
+  forwardDev('merged', event.payload);
+  if (currentVault) await openVault(currentVault);
+});
+
+void listen('ingest:review', (event) => {
+  const p = event.payload as ReviewPayload;
+  clearAgentActive();
+  showReview(p);
+  forwardDev('review', {
+    jobId: p.jobId,
+    source: p.source,
+    newIssues: p.newIssues,
+    deletions: p.deletions,
+    patchBytes: p.patch.length,
+    summary: p.summary,
+  });
+});
+
+void listen('ingest:failed', (event) => {
+  const p = event.payload as { jobId: number; source: string; error: string };
+  clearAgentActive();
+  setIngestStatus(`failed: ${p.source} — ${p.error}`, false);
+  forwardDev('failed', p);
+});
+
+void listen('ingest:rejected', async (event) => {
+  forwardDev('rejected', event.payload);
+  if (currentVault) await openVault(currentVault); // pick up the log entry
+});
+
 /* Wiring -------------------------------------------------------------------- */
 document.getElementById('open-vault')!.addEventListener('click', () => void chooseVault());
 document.getElementById('empty-open')!.addEventListener('click', () => void chooseVault());
 document.getElementById('detail-close')!.addEventListener('click', deselect);
+opIngestEl.addEventListener('click', () => void startIngest());
 opLintEl.addEventListener('click', () => toggleSidePanel('lint'));
 opLogEl.addEventListener('click', () => toggleSidePanel('log'));
+document.getElementById('review-accept')!.addEventListener('click', () => void decideReview(true));
+document.getElementById('review-reject')!.addEventListener('click', () => void decideReview(false));
 document.querySelectorAll<HTMLButtonElement>('.panel-close[data-panel]').forEach((btn) =>
   btn.addEventListener('click', closeSidePanels),
 );
@@ -780,6 +987,8 @@ document.addEventListener('click', (event) => {
 svg.addEventListener('click', deselect);
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+  // The review panel requires an explicit accept/reject — Escape skips it.
+  if (!reviewEl.hidden) return;
   if (!recentPopEl.hidden) {
     recentPopEl.hidden = true;
     updateExclusions();
@@ -807,8 +1016,9 @@ renderRecentsInto(recentEl);
 updateExclusions();
 
 // Dev-only test hooks (stripped from production builds): VITE_DEV_VAULT
-// auto-opens a vault on launch and VITE_DEV_SELECT auto-selects a node, then
-// a render report is POSTed back to the vite terminal for verification.
+// auto-opens a vault on launch, VITE_DEV_SELECT auto-selects a node, and
+// VITE_DEV_INGEST enqueues a source file; a render report and all ingest
+// events are POSTed back to the vite terminal for verification.
 if (import.meta.env.DEV && import.meta.env.VITE_DEV_VAULT) {
   void (async () => {
     const report = (payload: unknown) =>
@@ -818,98 +1028,9 @@ if (import.meta.env.DEV && import.meta.env.VITE_DEV_VAULT) {
       const m = /translate\((-?[\d.]+),\s*(-?[\d.]+)\)/.exec(g.getAttribute('transform') ?? '');
       return { x: m ? parseFloat(m[1]) : 0, y: m ? parseFloat(m[2]) : 0 };
     };
-    const rawPanelRects = () =>
-      [...document.querySelectorAll<HTMLElement>('.glass')]
-        .filter((el) => !el.hidden)
-        .map((el) => el.getBoundingClientRect());
-    const insideAnyPanel = (x: number, y: number) =>
-      rawPanelRects().some((r) => x > r.left && x < r.right && y > r.top && y < r.bottom);
     try {
       await openVault(import.meta.env.VITE_DEV_VAULT as string);
-      await sleep(1500); // let the simulation settle and clear the panels
-
-      const nodesInsidePanels = [...svg.querySelectorAll('.node')].filter((g) => {
-        const p = nodePos(g);
-        return insideAnyPanel(p.x, p.y);
-      }).length;
-
-      // Vertical distribution: nodes should spread around the usable center,
-      // not bunch along the top edge — at default size and when taller.
-      const yStats = () => {
-        const ys = [...svg.querySelectorAll('.node')].map((g) => nodePos(g).y);
-        return {
-          h: window.innerHeight,
-          min: Math.round(Math.min(...ys)),
-          max: Math.round(Math.max(...ys)),
-          mean: Math.round(ys.reduce((a, b) => a + b, 0) / ys.length),
-        };
-      };
-      const spread: { default: unknown; tall: unknown } = { default: yStats(), tall: null };
-      try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const { LogicalSize } = await import('@tauri-apps/api/dpi');
-        const win = getCurrentWindow();
-        await win.setSize(new LogicalSize(1200, 1000));
-        await sleep(1800);
-        spread.tall = yStats();
-        await win.setSize(new LogicalSize(1200, 800));
-        await sleep(800);
-      } catch (error) {
-        spread.tall = { error: String(error) };
-      }
-
-      // Drag a node to the middle of the toolbar; on release it must be
-      // nudged clear, stay pinned, and remain clickable.
-      const toolbarRect = commandEl.getBoundingClientRect();
-      const target = {
-        x: toolbarRect.left + toolbarRect.width / 2,
-        y: toolbarRect.top + toolbarRect.height / 2,
-      };
-      const firstNode = svg.querySelector('.node') as SVGGElement;
-      const from = nodePos(firstNode);
-      const pointer = { bubbles: true, pointerId: 1, button: 0 };
-      firstNode.dispatchEvent(
-        new PointerEvent('pointerdown', { ...pointer, clientX: from.x, clientY: from.y }),
-      );
-      firstNode.dispatchEvent(
-        new PointerEvent('pointermove', { ...pointer, clientX: target.x, clientY: target.y }),
-      );
-      firstNode.dispatchEvent(
-        new PointerEvent('pointerup', { ...pointer, clientX: target.x, clientY: target.y }),
-      );
-      await sleep(400);
-      const dropped = nodePos(firstNode);
-      const drag = {
-        pinned: firstNode.classList.contains('pinned'),
-        droppedInsidePanel: insideAnyPanel(dropped.x, dropped.y),
-        clearOfToolbar: !(
-          dropped.x > toolbarRect.left &&
-          dropped.x < toolbarRect.right &&
-          dropped.y > toolbarRect.top &&
-          dropped.y < toolbarRect.bottom
-        ),
-      };
-      window.dispatchEvent(new Event('resize')); // exercise the resize path
-
-      opLintEl.click();
-      const lint = {
-        open: !lintPanelEl.hidden,
-        issueRows: lintBodyEl.querySelectorAll('button.issue').length,
-        agentChecks: lintBodyEl.querySelectorAll('.agent-check').length,
-        sub: lintSubEl.textContent,
-      };
-      opLogEl.click();
-      const log = {
-        open: !logPanelEl.hidden,
-        lintClosed: lintPanelEl.hidden,
-        hasLog: logRaw !== null,
-        entries: logBodyEl.querySelectorAll('.log-entry').length,
-        firstEntryDate: logBodyEl.querySelector('.log-date')?.textContent ?? null,
-        emptyText: logBodyEl.querySelector('.log-empty')?.textContent?.slice(0, 60) ?? null,
-        sub: logSubEl.textContent,
-      };
-      opLogEl.click(); // close again
-
+      await sleep(1200);
       const selectId = import.meta.env.VITE_DEV_SELECT as string | undefined;
       if (selectId) select(selectId);
       const types = [...new Set(vault!.pages.map((p) => p.type))];
@@ -920,24 +1041,24 @@ if (import.meta.env.DEV && import.meta.env.VITE_DEV_VAULT) {
         colorsByType: Object.fromEntries(types.map((t) => [t ?? '(none)', colorFor(t)])),
         orphans: issues.filter((i) => i.rule === 'orphan').map((i) => i.page),
         emptyStateDisplay: getComputedStyle(emptyEl).display,
-        recentVaults: getRecents(),
-        ops: {
-          ingestDisabled: (document.getElementById('op-ingest') as HTMLButtonElement).disabled,
-          queryDisabled: (document.getElementById('op-query') as HTMLButtonElement).disabled,
-        },
-        nodesInsidePanels,
-        verticalSpread: spread,
-        drag,
-        lint,
-        log,
-        focus: {
-          focused: svg.classList.contains('focused'),
-          fadedNodes: svg.querySelectorAll('.node.faded').length,
-          fadedEdges: svg.querySelectorAll('line.edge.faded').length,
-          litEdges: svg.querySelectorAll('line.edge.lit').length,
-        },
+        meanY: (() => {
+          const ys = [...svg.querySelectorAll('.node')].map((g) => nodePos(g).y);
+          return ys.length > 0 ? Math.round(ys.reduce((a, b) => a + b, 0) / ys.length) : null;
+        })(),
         selected: selectId ? { id: selectId, sidebarText: sidebar.innerText } : null,
       });
+      const devIngest = import.meta.env.VITE_DEV_INGEST as string | undefined;
+      if (devIngest) {
+        const vaultRoot = import.meta.env.VITE_DEV_VAULT as string;
+        // 'scan' enqueues every not-yet-ingested file in raw/ (sorted);
+        // anything else is a single source path.
+        const sources =
+          devIngest === 'scan'
+            ? []
+            : [devIngest.startsWith('/') ? devIngest : `${vaultRoot}/${devIngest}`];
+        const queued = await invoke('ingest_enqueue', { vault: vaultRoot, sources });
+        await report({ ingest: 'enqueued', payload: { mode: devIngest, queued } });
+      }
     } catch (error) {
       await report({ error: String(error) });
     }

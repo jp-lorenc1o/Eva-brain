@@ -13,7 +13,8 @@ export interface LintIssue {
 /**
  * Lint the whole vault:
  * - broken-link: a wiki-link that resolves to no page
- * - orphan: no other page links to this page
+ * - orphan: no other page links to this page (index pages are exempt — a
+ *   hub's job is to link out to everything, not to be linked back to)
  * - missing-type: frontmatter has no `type` field
  */
 export function lintVault(vault: Vault): LintIssue[] {
@@ -31,7 +32,7 @@ export function lintVault(vault: Vault): LintIssue[] {
         });
       }
     }
-    if (!hasIncoming.has(page.id)) {
+    if (!hasIncoming.has(page.id) && page.type !== 'index') {
       issues.push({
         page: page.id,
         rule: 'orphan',

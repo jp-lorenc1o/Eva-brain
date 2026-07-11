@@ -83,6 +83,29 @@ describe('test-vault', () => {
     expect(orphans).toEqual(['concepts/wiki-linting']);
   });
 
+  it('does not flag index-type hub pages as orphans', () => {
+    const hubVault = buildVault([
+      { path: 'index.md', content: '---\ntitle: Home\ntype: index\n---\n\nSee [[a]].' },
+      { path: 'a.md', content: '---\ntitle: A\ntype: concept\n---\n\nBody.' },
+    ]);
+    const orphans = lintVault(hubVault)
+      .filter((issue) => issue.rule === 'orphan')
+      .map((issue) => issue.page);
+    // index has no incoming links but is a hub, not an orphan
+    expect(orphans).toEqual([]);
+  });
+
+  it('scopes the index exemption narrowly: other unlinked pages still orphan', () => {
+    const mixedVault = buildVault([
+      { path: 'index.md', content: '---\ntitle: Home\ntype: index\n---\n\nNo links here.' },
+      { path: 'b.md', content: '---\ntitle: B\ntype: concept\n---\n\nBody.' },
+    ]);
+    const orphans = lintVault(mixedVault)
+      .filter((issue) => issue.rule === 'orphan')
+      .map((issue) => issue.page);
+    expect(orphans).toEqual(['b']);
+  });
+
   it('flags the two intentionally broken links', () => {
     const broken = lintVault(vault).filter((issue) => issue.rule === 'broken-link');
     expect(broken.map((issue) => issue.page).sort()).toEqual([

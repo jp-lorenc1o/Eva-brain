@@ -296,6 +296,21 @@ body::after {
   cursor: default;
 }
 
+#ingest-status {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--ink-dim);
+  max-width: 30vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ingest-status.working {
+  color: var(--red);
+}
+
 .soon {
   font-family: var(--font-data);
   font-size: 8.5px;
@@ -485,6 +500,67 @@ body::after {
   font-size: 12.5px;
   line-height: 1.55;
   color: #45443c;
+}
+
+/* Ingest review: a held branch awaiting the editor's decision -------------- */
+#review {
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(780px, calc(100vw - 60px));
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: 20px 24px;
+  z-index: 3;
+}
+
+#review-issues {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+#review-patch {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--recess);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+#review-patch .diff-add {
+  color: #47663f;
+}
+
+#review-patch .diff-del {
+  color: var(--red);
+}
+
+#review-patch .diff-file {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.review-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-stamp.reject {
+  color: var(--ink-dim);
+  border-color: var(--ink-dim);
+}
+
+.btn-stamp.reject:hover {
+  background: var(--ink-dim);
+  color: var(--paper);
 }
 
 /* Detail sheet -------------------------------------------------------------
@@ -682,6 +758,31 @@ line.edge.lit {
   }
 }
 
+/* Agent activity: the page currently being edited pulses like a live mark */
+.node circle.pulse {
+  display: none;
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 2;
+}
+
+.node.agent-active circle.pulse {
+  display: inline;
+  animation: agentpulse 1.6s ease-in-out infinite;
+}
+
+@keyframes agentpulse {
+  0%,
+  100% {
+    stroke-opacity: 0.9;
+    r: 13;
+  }
+  50% {
+    stroke-opacity: 0.25;
+    r: 19;
+  }
+}
+
 /* Focus: with a selection active, everything outside the selected node's
    neighborhood recedes — dimmed, never hidden. */
 #graph.focused .node.faded {
@@ -709,6 +810,11 @@ line.edge.lit {
 @media (prefers-reduced-motion: reduce) {
   .node.selected circle.ring {
     animation: none;
+  }
+
+  .node.agent-active circle.pulse {
+    animation: none;
+    stroke-opacity: 0.7;
   }
 
   .node,

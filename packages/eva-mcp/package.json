@@ -1,0 +1,14 @@
+{
+  "name": "eva-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "eva-mcp": "./server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "wiki-lib": "*",
+    "zod": "^3.24.0"
+  }
+}

@@ -25,8 +25,8 @@
       </div>
       <span class="toolbar-rule" aria-hidden="true"></span>
       <nav class="ops" aria-label="Vault operations">
-        <button id="op-ingest" class="op" disabled title="Add a source for the agent to integrate — requires the agent adapter">
-          Ingest<span class="soon">soon</span>
+        <button id="op-ingest" class="op" title="Add source documents for the agent to integrate into the wiki">
+          Ingest
         </button>
         <button id="op-query" class="op" disabled title="Ask the vault a question — requires the agent adapter">
           Query<span class="soon">soon</span>
@@ -34,6 +34,7 @@
         <button id="op-lint" class="op" aria-pressed="false">Lint</button>
         <button id="op-log" class="op" aria-pressed="false">Log</button>
       </nav>
+      <span id="ingest-status" hidden></span>
     </header>
     <div id="recent-pop" class="glass" hidden></div>
     <aside id="lint-panel" class="glass dock-left" hidden aria-label="Vault lint">
@@ -55,6 +56,18 @@
     <aside id="detail" class="glass" hidden>
       <button id="detail-close" class="panel-close" aria-label="Close details">&#10005;</button>
       <div id="sidebar"></div>
+    </aside>
+    <aside id="review" class="glass" hidden aria-label="Ingest review">
+      <div class="panel-head">
+        <h2>Review ingest</h2>
+        <p class="panel-sub" id="review-sub"></p>
+      </div>
+      <div id="review-issues"></div>
+      <pre id="review-patch"></pre>
+      <div class="review-actions">
+        <button id="review-accept" class="btn-stamp">Accept and merge</button>
+        <button id="review-reject" class="btn-stamp reject">Reject</button>
+      </div>
     </aside>
     <nav id="legend" class="glass" hidden aria-label="Node types"></nav>
     <script type="module" src="/src/main.ts"></script>
