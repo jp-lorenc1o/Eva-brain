@@ -933,6 +933,19 @@ function deselect(): void {
   updateExclusions();
 }
 
+function goHome(): void {
+  // A pending review is deliberately the one exception: it needs an explicit
+  // accept/reject decision before the person can leave that operation.
+  if (!reviewEl.hidden) {
+    setIngestStatus('Finish the review before returning to the graph', false, true);
+    return;
+  }
+  if (!queryPanelEl.hidden) closeQuery();
+  closeSidePanels();
+  recentPopEl.hidden = true;
+  deselect();
+}
+
 /* Operation panels: lint and log share the left dock, one at a time -------- */
 function syncOpButtons(): void {
   opLintEl.classList.toggle('active', !lintPanelEl.hidden);
@@ -1600,6 +1613,7 @@ void listen('ingest:rejected', async (event) => {
 });
 
 /* Wiring -------------------------------------------------------------------- */
+document.getElementById('go-home')!.addEventListener('click', goHome);
 document.getElementById('open-vault')!.addEventListener('click', showBrainLibrary);
 document.getElementById('empty-open')!.addEventListener('click', showBrainLibrary);
 document.getElementById('new-vault-button')!.addEventListener('click', showNewVault);
