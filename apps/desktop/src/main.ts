@@ -1294,6 +1294,10 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
 
   g.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
+    // The graph is an interaction surface, never a text editor. Suppress the
+    // browser's native selection gesture before pointer capture begins so a
+    // drag across other labels cannot leave them highlighted.
+    event.preventDefault();
     activePointer = event.pointerId;
     moved = false;
     startX = event.clientX;
@@ -1310,6 +1314,7 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
 
   g.addEventListener('pointermove', (event) => {
     if (activePointer !== event.pointerId) return;
+    event.preventDefault();
     if (Math.hypot(event.clientX - startX, event.clientY - startY) > 3) moved = true;
     // The SVG is viewport-fixed with no viewBox, so client coords are
     // simulation coords.
