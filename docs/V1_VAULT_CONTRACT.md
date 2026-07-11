@@ -54,10 +54,11 @@ page details and backlinks, and shows structural lint issues. It treats
 
 ### Query
 
-V1 establishes the data contract for querying: agents search the wiki first,
-cite supporting pages and raw sources, and may save reusable work as an
-`analysis` page. A native query surface and save flow are the next product
-slice, not a hidden RAG layer.
+Eva's native Query surface gives the agent read-only wiki navigation tools. It
+searches the wiki first, returns an answer with supporting page ids and raw
+source paths, and does not modify the vault while answering. **Save as
+analysis** creates a proposed `analysis` page, index update, and log entry in
+an isolated Git worktree; the user must explicitly review and merge it.
 
 ### Lint
 

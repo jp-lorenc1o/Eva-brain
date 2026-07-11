@@ -73,13 +73,25 @@ const logPanelEl = document.getElementById('log-panel') as HTMLElement;
 const logSubEl = document.getElementById('log-sub') as HTMLElement;
 const logBodyEl = document.getElementById('log-body') as HTMLElement;
 const opIngestEl = document.getElementById('op-ingest') as HTMLButtonElement;
+const opQueryEl = document.getElementById('op-query') as HTMLButtonElement;
 const opLintEl = document.getElementById('op-lint') as HTMLButtonElement;
 const opLogEl = document.getElementById('op-log') as HTMLButtonElement;
 const ingestStatusEl = document.getElementById('ingest-status') as HTMLElement;
 const reviewEl = document.getElementById('review') as HTMLElement;
+const reviewTitleEl = document.getElementById('review-title') as HTMLElement;
 const reviewSubEl = document.getElementById('review-sub') as HTMLElement;
 const reviewIssuesEl = document.getElementById('review-issues') as HTMLElement;
 const reviewPatchEl = document.getElementById('review-patch') as HTMLElement;
+const queryPanelEl = document.getElementById('query-panel') as HTMLElement;
+const queryFormEl = document.getElementById('query-form') as HTMLFormElement;
+const queryQuestionEl = document.getElementById('query-question') as HTMLTextAreaElement;
+const queryErrorEl = document.getElementById('query-error') as HTMLElement;
+const queryStatusEl = document.getElementById('query-status') as HTMLElement;
+const querySubmitEl = document.getElementById('query-submit') as HTMLButtonElement;
+const queryResultEl = document.getElementById('query-result') as HTMLElement;
+const queryAnswerEl = document.getElementById('query-answer') as HTMLElement;
+const queryCitationsEl = document.getElementById('query-citations') as HTMLElement;
+const querySaveEl = document.getElementById('query-save') as HTMLButtonElement;
 const newVaultEl = document.getElementById('new-vault') as HTMLElement;
 const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
 const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
@@ -101,8 +113,10 @@ let simNodes: SimNode[] = [];
 let refreshPositions: (() => void) | null = null;
 let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
-let reviewJobId: number | null = null;
+let reviewId: number | null = null;
+let reviewKind: 'ingest' | 'query' | null = null;
 let newVaultParent: string | null = null;
+let latestQuery: { question: string; answer: QueryAnswer } | null = null;
 const agentActive = new Set<string>();
 
 /* Panel exclusion zones ------------------------------------------------------
@@ -905,6 +919,146 @@ async function startIngest(): Promise<void> {
   }
 }
 
+interface QueryCitation {
+  page: string;
+  sources: string[];
+}
+
+interface QueryAnswer {
+  answer: string;
+  citations: QueryCitation[];
+}
+
+interface QueryReviewPayload {
+  reviewId: number;
+  question: string;
+  patch: string;
+  newIssues: string[];
+  deletions: string[];
+}
+
+function setQueryError(message: string | null): void {
+  queryErrorEl.hidden = !message;
+  queryErrorEl.textContent = message ?? '';
+}
+
+function setQueryRunning(running: boolean, label?: string): void {
+  querySubmitEl.disabled = running;
+  queryQuestionEl.disabled = running;
+  queryStatusEl.hidden = !running;
+  queryStatusEl.textContent = running ? label ?? 'Reading the vault…' : '';
+  opQueryEl.classList.toggle('active', running);
+}
+
+function closeQuery(): void {
+  queryPanelEl.hidden = true;
+  queryQuestionEl.value = '';
+  queryResultEl.hidden = true;
+  queryCitationsEl.innerHTML = '';
+  latestQuery = null;
+  setQueryError(null);
+  setQueryRunning(false);
+  updateExclusions();
+}
+
+function showQuery(): void {
+  if (!currentVault) return;
+  queryPanelEl.hidden = false;
+  queryQuestionEl.value = '';
+  queryResultEl.hidden = true;
+  queryCitationsEl.innerHTML = '';
+  latestQuery = null;
+  setQueryError(null);
+  setQueryRunning(false);
+  updateExclusions();
+  window.setTimeout(() => queryQuestionEl.focus(), 0);
+}
+
+function renderQueryAnswer(answer: QueryAnswer): void {
+  queryAnswerEl.textContent = answer.answer;
+  queryCitationsEl.innerHTML = '';
+  if (answer.citations.length === 0) {
+    const none = document.createElement('p');
+    none.className = 'query-no-citations';
+    none.textContent = 'No supporting vault pages were returned for this answer.';
+    queryCitationsEl.appendChild(none);
+  }
+  for (const citation of answer.citations) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'query-citation';
+    const page = document.createElement('span');
+    page.className = 'query-citation-page';
+    page.textContent = citation.page;
+    item.appendChild(page);
+    if (citation.sources.length > 0) {
+      const sources = document.createElement('span');
+      sources.className = 'query-citation-sources';
+      sources.textContent = citation.sources.join(' · ');
+      item.appendChild(sources);
+    }
+    item.addEventListener('click', () => {
+      if (!vault?.byId.has(citation.page)) return;
+      closeQuery();
+      select(citation.page);
+    });
+    queryCitationsEl.appendChild(item);
+  }
+  queryResultEl.hidden = false;
+  updateExclusions();
+}
+
+async function runQuery(): Promise<void> {
+  if (!currentVault) return;
+  const question = queryQuestionEl.value.trim();
+  if (!question) {
+    setQueryError('Enter a question for this vault.');
+    return;
+  }
+  setQueryError(null);
+  queryResultEl.hidden = true;
+  setQueryRunning(true);
+  try {
+    const answer = await invoke<QueryAnswer>('query_run', { vault: currentVault, question });
+    latestQuery = { question, answer };
+    renderQueryAnswer(answer);
+  } catch (error) {
+    setQueryError(String(error));
+  } finally {
+    setQueryRunning(false);
+  }
+}
+
+async function saveQueryAsAnalysis(): Promise<void> {
+  if (!currentVault || !latestQuery) return;
+  querySaveEl.disabled = true;
+  setQueryError(null);
+  setQueryRunning(true, 'Preparing review…');
+  try {
+    const review = await invoke<QueryReviewPayload>('query_save', {
+      vault: currentVault,
+      question: latestQuery.question,
+      answer: latestQuery.answer,
+    });
+    closeQuery();
+    showReview({
+      kind: 'query',
+      id: review.reviewId,
+      subject: review.question,
+      patch: review.patch,
+      newIssues: review.newIssues,
+      deletions: review.deletions,
+      heldMessage: 'inspect the saved analysis before merging',
+    });
+    setIngestStatus('Analysis ready for review', false);
+  } catch (error) {
+    setQueryError(String(error));
+  } finally {
+    querySaveEl.disabled = false;
+    setQueryRunning(false);
+  }
+}
+
 interface ReviewPayload {
   jobId: number;
   source: string;
@@ -914,13 +1068,25 @@ interface ReviewPayload {
   summary: string;
 }
 
-function showReview(p: ReviewPayload): void {
-  reviewJobId = p.jobId;
+interface ChangeReview {
+  kind: 'ingest' | 'query';
+  id: number;
+  subject: string;
+  patch: string;
+  newIssues: string[];
+  deletions: string[];
+  heldMessage: string;
+}
+
+function showReview(p: ChangeReview): void {
+  reviewId = p.id;
+  reviewKind = p.kind;
+  reviewTitleEl.textContent = p.kind === 'ingest' ? 'Review ingest' : 'Review analysis';
   const parts = [
     p.newIssues.length > 0 ? `${p.newIssues.length} new lint issue${p.newIssues.length === 1 ? '' : 's'}` : '',
     p.deletions.length > 0 ? `${p.deletions.length} deletion${p.deletions.length === 1 ? '' : 's'}` : '',
   ].filter(Boolean);
-  reviewSubEl.textContent = `${p.source} — held: ${parts.join(' · ')}`;
+  reviewSubEl.textContent = `${p.subject} — ${parts.length > 0 ? `held: ${parts.join(' · ')}` : p.heldMessage}`;
   reviewIssuesEl.innerHTML = '';
   for (const del of p.deletions) {
     const item = document.createElement('div');
@@ -954,15 +1120,27 @@ function showReview(p: ReviewPayload): void {
 }
 
 async function decideReview(accept: boolean): Promise<void> {
-  if (reviewJobId === null) return;
-  const jobId = reviewJobId;
-  reviewJobId = null;
+  if (reviewId === null || reviewKind === null) return;
+  const id = reviewId;
+  const kind = reviewKind;
+  reviewId = null;
+  reviewKind = null;
   reviewEl.hidden = true;
   updateExclusions();
   try {
-    await invoke('ingest_decide', { jobId, accept });
+    if (kind === 'ingest') {
+      await invoke('ingest_decide', { jobId: id, accept });
+    } else {
+      await invoke('query_decide', { reviewId: id, accept });
+      if (currentVault) await openVault(currentVault);
+      setIngestStatus(accept ? 'Analysis saved to the vault' : 'Analysis not saved', false);
+    }
   } catch (error) {
     setIngestStatus(String(error), false);
+    reviewId = id;
+    reviewKind = kind;
+    reviewEl.hidden = false;
+    updateExclusions();
   }
 }
 
@@ -1015,7 +1193,15 @@ void listen('ingest:merged', async (event) => {
 void listen('ingest:review', (event) => {
   const p = event.payload as ReviewPayload;
   clearAgentActive();
-  showReview(p);
+  showReview({
+    kind: 'ingest',
+    id: p.jobId,
+    subject: p.source,
+    patch: p.patch,
+    newIssues: p.newIssues,
+    deletions: p.deletions,
+    heldMessage: 'inspect the proposed ingest before merging',
+  });
   forwardDev('review', {
     jobId: p.jobId,
     source: p.source,
@@ -1055,6 +1241,13 @@ newVaultFormEl.addEventListener('submit', (event) => {
 });
 document.getElementById('detail-close')!.addEventListener('click', deselect);
 opIngestEl.addEventListener('click', () => void startIngest());
+opQueryEl.addEventListener('click', showQuery);
+document.getElementById('query-close')!.addEventListener('click', closeQuery);
+queryFormEl.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void runQuery();
+});
+querySaveEl.addEventListener('click', () => void saveQueryAsAnalysis());
 opLintEl.addEventListener('click', () => toggleSidePanel('lint'));
 opLogEl.addEventListener('click', () => toggleSidePanel('log'));
 document.getElementById('review-accept')!.addEventListener('click', () => void decideReview(true));
@@ -1082,6 +1275,10 @@ document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   // The review panel requires an explicit accept/reject — Escape skips it.
   if (!reviewEl.hidden) return;
+  if (!queryPanelEl.hidden) {
+    closeQuery();
+    return;
+  }
   if (!newVaultEl.hidden) {
     closeNewVault();
     return;

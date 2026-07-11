@@ -32,9 +32,7 @@
         <button id="op-ingest" class="op" title="Add source documents for the agent to integrate into the wiki">
           Ingest
         </button>
-        <button id="op-query" class="op" disabled title="Ask the vault a question — requires the agent adapter">
-          Query<span class="soon">soon</span>
-        </button>
+        <button id="op-query" class="op" title="Ask the current vault a cited question">Query</button>
         <button id="op-lint" class="op" aria-pressed="false">Lint</button>
         <button id="op-log" class="op" aria-pressed="false">Log</button>
       </nav>
@@ -61,9 +59,9 @@
       <button id="detail-close" class="panel-close" aria-label="Close details">&#10005;</button>
       <div id="sidebar"></div>
     </aside>
-    <aside id="review" class="glass" hidden aria-label="Ingest review">
+    <aside id="review" class="glass" hidden aria-label="Change review">
       <div class="panel-head">
-        <h2>Review ingest</h2>
+        <h2 id="review-title">Review changes</h2>
         <p class="panel-sub" id="review-sub"></p>
       </div>
       <div id="review-issues"></div>
@@ -72,6 +70,35 @@
         <button id="review-accept" class="btn-stamp">Accept and merge</button>
         <button id="review-reject" class="btn-stamp reject">Reject</button>
       </div>
+    </aside>
+    <aside id="query-panel" class="glass" hidden aria-label="Query vault">
+      <button id="query-close" class="panel-close" aria-label="Close query">&#10005;</button>
+      <div class="panel-head">
+        <p class="form-kicker">Ask the record</p>
+        <h2>Query vault</h2>
+        <p class="form-copy">
+          Eva reads the current wiki and returns a cited answer. Asking never
+          changes the vault; saving creates a reviewable analysis page.
+        </p>
+      </div>
+      <form id="query-form">
+        <label class="form-label" for="query-question">Question</label>
+        <textarea id="query-question" class="query-input" rows="4" maxlength="4000" placeholder="What does the evidence suggest about…"></textarea>
+        <p id="query-error" class="form-error" role="alert" hidden></p>
+        <div class="query-actions">
+          <span id="query-status" class="query-status" hidden></span>
+          <button id="query-submit" class="btn-stamp" type="submit">Ask vault</button>
+        </div>
+      </form>
+      <section id="query-result" hidden aria-live="polite">
+        <div class="query-answer-head">
+          <h3>Answer</h3>
+          <button id="query-save" class="btn-stamp aux" type="button">Save as analysis</button>
+        </div>
+        <pre id="query-answer" class="query-answer"></pre>
+        <h3 class="query-evidence-title">Evidence</h3>
+        <div id="query-citations" class="query-citations"></div>
+      </section>
     </aside>
     <section id="new-vault" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="new-vault-title">
       <form id="new-vault-form">

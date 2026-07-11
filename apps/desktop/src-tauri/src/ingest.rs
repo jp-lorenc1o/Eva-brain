@@ -1,7 +1,7 @@
 // Ingest orchestration: job queue, git branch/worktree management, the
 // headless agent subprocess, and the lint gate. The webview only invokes the
 // commands at the bottom and renders the events this module emits.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
@@ -46,6 +46,49 @@ pub struct IngestState {
 }
 
 pub type SharedState = Mutex<IngestState>;
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryCitation {
+    pub page: String,
+    #[serde(default)]
+    pub sources: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryAnswer {
+    pub answer: String,
+    #[serde(default)]
+    pub citations: Vec<QueryCitation>,
+}
+
+pub struct QueryHeld {
+    pub review_id: u64,
+    pub vault: PathBuf,
+    pub question: String,
+    pub branch: String,
+    pub worktree: PathBuf,
+}
+
+#[derive(Default)]
+pub struct QueryState {
+    pub held: Option<QueryHeld>,
+    pub next_review_id: u64,
+    pub saving: bool,
+}
+
+pub type SharedQueryState = Mutex<QueryState>;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryReview {
+    pub review_id: u64,
+    pub question: String,
+    pub patch: String,
+    pub new_issues: Vec<String>,
+    pub deletions: Vec<String>,
+}
 
 enum RunOutcome {
     Merged {
@@ -260,16 +303,46 @@ fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").chars().take(72).collect()
 }
 
-fn append_log(dir: &Path, source_name: &str, body: &str) -> Result<(), String> {
+fn append_log(dir: &Path, operation: &str, subject: &str, body: &str) -> Result<(), String> {
     let log_path = dir.join("log.md");
     let mut log = fs::read_to_string(&log_path).unwrap_or_else(|_| "# Log\n".to_string());
     log.push_str(&format!(
-        "\n## [{}] ingest | {}\n{}\n",
+        "\n## [{}] {} | {}\n{}\n",
         today(),
-        source_name,
+        operation,
+        subject,
         body.trim()
     ));
     fs::write(&log_path, log).map_err(|e| e.to_string())
+}
+
+fn slugify(value: &str, fallback: &str) -> String {
+    let slug: String = value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        fallback.into()
+    } else {
+        slug.chars().take(52).collect()
+    }
+}
+
+fn one_line(value: &str, max: usize) -> String {
+    let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let value: String = value.chars().take(max).collect();
+    if value.is_empty() {
+        "Untitled analysis".into()
+    } else {
+        value
+    }
 }
 
 fn cleanup(vault: &Path, branch: &str, worktree: &Path) {
@@ -403,6 +476,102 @@ When you are done, reply with a one-paragraph summary of what you created and up
     Ok(summary)
 }
 
+/// Queries use the same local MCP navigation surface as ingest, but the
+/// subprocess is deliberately denied every write tool. The agent returns a
+/// compact JSON answer so the desktop app can render evidence separately from
+/// the prose and only create an analysis after an explicit user action.
+fn drive_query_agent(vault: &Path, question: &str) -> Result<QueryAnswer, String> {
+    let server = tools_dir()?.join("server.mjs");
+    let cfg = serde_json::json!({
+        "mcpServers": {
+            "eva": {
+                "command": "node",
+                "args": [server.to_string_lossy()],
+                "env": { "EVA_VAULT": vault.to_string_lossy() }
+            }
+        }
+    });
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let cfg_path = std::env::temp_dir().join(format!("eva-query-{}-{nonce}.json", std::process::id()));
+    fs::write(&cfg_path, cfg.to_string()).map_err(|e| e.to_string())?;
+
+    let result = (|| -> Result<QueryAnswer, String> {
+        let prompt = format!(
+            r#"You are answering a question from an Eva LLM Wiki. The wiki is a persistent, curated knowledge artifact; answer from it rather than from general knowledge.
+
+1. Read EVA.md at the vault root and use the eva MCP tools to search, then read the pages relevant to the question.
+2. Use only evidence present in the vault. If the vault does not support an answer, say what is missing instead of guessing.
+3. Do not modify any file and do not use git.
+4. Return only valid JSON, with no Markdown fence or surrounding commentary, in this exact shape:
+{{"answer":"concise Markdown answer","citations":[{{"page":"vault-relative page id","sources":["raw/source-file.ext"]}}]}}
+5. Cite every page that materially supports the answer. Use exact page ids. For each citation, include the raw source paths named by that page when available. An answer with no supporting vault evidence must return an empty citations array.
+
+Question: {question}"#
+        );
+
+        let mut child = Command::new("claude")
+            .args([
+                "-p",
+                &prompt,
+                "--output-format",
+                "stream-json",
+                "--verbose",
+                "--mcp-config",
+                &cfg_path.to_string_lossy(),
+                "--allowedTools",
+                "Read,Glob,Grep,LS,mcp__eva__search,mcp__eva__neighbors,mcp__eva__shortest_path,mcp__eva__read_page",
+                "--max-turns",
+                "40",
+            ])
+            .current_dir(vault)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to start claude: {e}"))?;
+
+        let mut stderr = child.stderr.take().unwrap();
+        let stderr_thread = std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = stderr.read_to_string(&mut buf);
+            buf
+        });
+
+        let stdout = child.stdout.take().unwrap();
+        let mut result_text = String::new();
+        for line in BufReader::new(stdout).lines() {
+            let line = line.map_err(|e| e.to_string())?;
+            let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            if event["type"].as_str() == Some("result") {
+                result_text = event["result"].as_str().unwrap_or("").to_string();
+            }
+        }
+        let status = child.wait().map_err(|e| e.to_string())?;
+        let stderr_text = stderr_thread.join().unwrap_or_default();
+        if !status.success() {
+            return Err(format!(
+                "agent exited with {status}: {}",
+                first_line(&stderr_text)
+            ));
+        }
+        if result_text.trim().is_empty() {
+            return Err("agent returned no answer".into());
+        }
+        let answer: QueryAnswer = serde_json::from_str(result_text.trim())
+            .map_err(|_| "agent returned an invalid cited answer; try again".to_string())?;
+        if answer.answer.trim().is_empty() {
+            return Err("agent returned an empty answer".into());
+        }
+        Ok(answer)
+    })();
+    let _ = fs::remove_file(&cfg_path);
+    result
+}
+
 fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
     let vault = PathBuf::from(&job.vault);
     // Capture the exact commit the worktree starts from. A vault is not
@@ -450,7 +619,7 @@ fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
         &worktree,
         &["commit", "-m", &format!("agent: ingest {}", job.source_name)],
     )?;
-    append_log(&worktree, &job.source_name, &summary)?;
+    append_log(&worktree, "ingest", &job.source_name, &summary)?;
     git(&worktree, &["add", "log.md"])?;
     git(
         &worktree,
@@ -496,6 +665,212 @@ fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
             deletions,
             summary,
         })
+    }
+}
+
+fn query_text(question: &str) -> Result<&str, String> {
+    let question = question.trim();
+    if question.is_empty() {
+        return Err("enter a question for this vault".into());
+    }
+    if question.chars().count() > 4_000 {
+        return Err("questions must be 4,000 characters or fewer".into());
+    }
+    Ok(question)
+}
+
+fn safe_reference(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.chars().any(char::is_control)
+        || value.contains(['[', ']', '|'])
+    {
+        None
+    } else {
+        Some(value.into())
+    }
+}
+
+fn analysis_title(question: &str) -> String {
+    let subject = one_line(question, 72);
+    let subject: String = subject
+        .chars()
+        .filter(|c| !matches!(c, '[' | ']' | '|'))
+        .collect();
+    format!("Analysis — {subject}")
+}
+
+fn next_analysis_path(dir: &Path, question: &str) -> Result<(String, PathBuf), String> {
+    let analyses = dir.join("analyses");
+    fs::create_dir_all(&analyses).map_err(|e| format!("create analyses directory: {e}"))?;
+    let base = format!("{}-{}", today(), slugify(question, "analysis"));
+    for sequence in 1..10_000 {
+        let stem = if sequence == 1 {
+            base.clone()
+        } else {
+            format!("{base}-{sequence}")
+        };
+        let path = analyses.join(format!("{stem}.md"));
+        if !path.exists() {
+            return Ok((format!("analyses/{stem}"), path));
+        }
+    }
+    Err("could not find an available analysis filename".into())
+}
+
+fn append_analysis_to_index(dir: &Path, page_id: &str, title: &str, question: &str) -> Result<(), String> {
+    let path = dir.join("index.md");
+    let mut index = fs::read_to_string(&path).map_err(|e| format!("read index.md: {e}"))?;
+    let item = format!("- [[{page_id}|{title}]] — saved answer: {}\n", one_line(question, 104));
+    if let Some(at) = index.find("## Analyses") {
+        let after_heading = index[at..]
+            .find('\n')
+            .map(|offset| at + offset + 1)
+            .unwrap_or(index.len());
+        index.insert_str(after_heading, &item);
+    } else {
+        if !index.ends_with('\n') {
+            index.push('\n');
+        }
+        index.push_str("\n## Analyses\n");
+        index.push_str(&item);
+    }
+    fs::write(&path, index).map_err(|e| format!("write index.md: {e}"))
+}
+
+fn analysis_markdown(question: &str, answer: &QueryAnswer, title: &str) -> String {
+    let refs: Vec<String> = answer
+        .citations
+        .iter()
+        .flat_map(|citation| {
+            let raw: Vec<String> = citation
+                .sources
+                .iter()
+                .filter_map(|source| safe_reference(source))
+                .filter(|source| source.starts_with("raw/"))
+                .collect();
+            if raw.is_empty() && citation.page.starts_with("summaries/") {
+                safe_reference(&citation.page).into_iter().collect()
+            } else {
+                raw
+            }
+        })
+        .collect();
+    let sources = if refs.is_empty() {
+        String::new()
+    } else {
+        format!("sources: {}\n", refs.join(", "))
+    };
+    let evidence = if answer.citations.is_empty() {
+        "- No supporting wiki page was returned for this answer.\n".to_string()
+    } else {
+        answer
+            .citations
+            .iter()
+            .filter_map(|citation| {
+                let page = safe_reference(&citation.page)?;
+                let raw: Vec<String> = citation
+                    .sources
+                    .iter()
+                    .filter_map(|source| safe_reference(source))
+                    .map(|source| format!("`{source}`"))
+                    .collect();
+                let suffix = if raw.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {}", raw.join(", "))
+                };
+                Some(format!("- [[{page}]]{suffix}\n"))
+            })
+            .collect()
+    };
+    format!(
+        "---\ntitle: {title}\ntype: analysis\nupdated: {}\n{sources}---\n\n# {title}\n\n## Question\n\n{question}\n\n## Answer\n\n{}\n\n## Evidence\n\n{evidence}",
+        today(),
+        answer.answer.trim(),
+    )
+}
+
+fn prepare_query_review(
+    vault: &Path,
+    review_id: u64,
+    question: &str,
+    answer: &QueryAnswer,
+) -> Result<(QueryHeld, QueryReview), String> {
+    let base_commit = git(vault, &["rev-parse", "HEAD"])?;
+    let base_commit = base_commit.trim().to_string();
+    let slug = format!("{}-{review_id}", slugify(question, "analysis"));
+    let branch = format!("query/{slug}");
+    let worktree = std::env::temp_dir().join("eva-worktrees").join(&slug);
+    fs::create_dir_all(worktree.parent().unwrap()).map_err(|e| e.to_string())?;
+    let (_, pre_issues) = lint(vault)?;
+    git(vault, &["branch", &branch])?;
+    if let Err(error) = git(
+        vault,
+        &["worktree", "add", &worktree.to_string_lossy(), &branch],
+    ) {
+        let _ = git(vault, &["branch", "-D", &branch]);
+        return Err(error);
+    }
+
+    let prepared = (|| -> Result<QueryReview, String> {
+        let title = analysis_title(question);
+        let (page_id, page_path) = next_analysis_path(&worktree, question)?;
+        fs::write(&page_path, analysis_markdown(question, answer, &title))
+            .map_err(|e| format!("write analysis: {e}"))?;
+        append_analysis_to_index(&worktree, &page_id, &title, question)?;
+        append_log(
+            &worktree,
+            "query",
+            &one_line(question, 72),
+            &format!("Saved [[{page_id}|{title}]] for review."),
+        )?;
+        git(&worktree, &["add", "analyses", "index.md", "log.md"])?;
+        git(
+            &worktree,
+            &[
+                "commit",
+                "-m",
+                &format!("query: save {}", first_line(question)),
+            ],
+        )?;
+        let name_status = git(vault, &["diff", "--name-status", &base_commit, &branch])?;
+        let deletions: Vec<String> = name_status
+            .lines()
+            .filter(|line| line.starts_with('D'))
+            .filter_map(|line| line.split_whitespace().nth(1).map(String::from))
+            .collect();
+        let (_, post_issues) = lint(&worktree)?;
+        let new_issues = post_issues
+            .iter()
+            .filter(|issue| !pre_issues.contains(issue))
+            .cloned()
+            .collect();
+        let patch = git(vault, &["diff", &base_commit, &branch])?;
+        Ok(QueryReview {
+            review_id,
+            question: question.into(),
+            patch,
+            new_issues,
+            deletions,
+        })
+    })();
+
+    match prepared {
+        Ok(review) => Ok((
+            QueryHeld {
+                review_id,
+                vault: vault.into(),
+                question: question.into(),
+                branch,
+                worktree,
+            },
+            review,
+        )),
+        Err(error) => {
+            cleanup(vault, &branch, &worktree);
+            Err(error)
+        }
     }
 }
 
@@ -591,9 +966,98 @@ pub fn vault_create(parent: String, name: String) -> Result<String, String> {
     Ok(root.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub fn query_run(vault: String, question: String) -> Result<QueryAnswer, String> {
+    let root = require_vault_repo(Path::new(&vault))?;
+    let question = query_text(&question)?;
+    Command::new("claude")
+        .arg("--version")
+        .output()
+        .map_err(|_| "claude CLI not found on PATH".to_string())?;
+    drive_query_agent(&root, question)
+}
+
+#[tauri::command]
+pub fn query_save(
+    state: State<SharedQueryState>,
+    vault: String,
+    question: String,
+    answer: QueryAnswer,
+) -> Result<QueryReview, String> {
+    let root = require_vault_repo(Path::new(&vault))?;
+    let question = query_text(&question)?.to_string();
+    let review_id = {
+        let mut st = state.lock().unwrap();
+        if st.saving || st.held.is_some() {
+            return Err("resolve the pending analysis review before saving another answer".into());
+        }
+        st.saving = true;
+        st.next_review_id += 1;
+        st.next_review_id
+    };
+    let prepared = prepare_query_review(&root, review_id, &question, &answer);
+    let mut st = state.lock().unwrap();
+    st.saving = false;
+    match prepared {
+        Ok((held, review)) => {
+            st.held = Some(held);
+            Ok(review)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+#[tauri::command]
+pub fn query_decide(
+    state: State<SharedQueryState>,
+    review_id: u64,
+    accept: bool,
+) -> Result<(), String> {
+    let held = {
+        let mut st = state.lock().unwrap();
+        let held = st.held.take().ok_or("no saved analysis is awaiting review")?;
+        if held.review_id != review_id {
+            st.held = Some(held);
+            return Err("that saved analysis is no longer awaiting review".into());
+        }
+        held
+    };
+    if accept {
+        git(
+            &held.vault,
+            &[
+                "merge",
+                "--no-ff",
+                &held.branch,
+                "-m",
+                &format!("query (reviewed): {}", first_line(&held.question)),
+            ],
+        )?;
+        cleanup(&held.vault, &held.branch, &held.worktree);
+    } else {
+        cleanup(&held.vault, &held.branch, &held.worktree);
+        append_log(
+            &held.vault,
+            "query",
+            &one_line(&held.question, 72),
+            "Answer was not saved; review branch discarded.",
+        )?;
+        git(&held.vault, &["add", "log.md"])?;
+        git(
+            &held.vault,
+            &[
+                "commit",
+                "-m",
+                &format!("log: reject query {}", first_line(&held.question)),
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::vault_dir_name;
+    use super::{analysis_markdown, vault_dir_name, QueryAnswer, QueryCitation};
 
     #[test]
     fn accepts_a_single_human_readable_folder_name() {
@@ -605,6 +1069,20 @@ mod tests {
         for name in ["", " ", ".", "..", "research/atlas", "research\\atlas"] {
             assert!(vault_dir_name(name).is_err(), "{name:?} should be rejected");
         }
+    }
+
+    #[test]
+    fn saved_analyses_keep_raw_source_provenance() {
+        let answer = QueryAnswer {
+            answer: "A cited answer.".into(),
+            citations: vec![QueryCitation {
+                page: "concepts/compounding".into(),
+                sources: vec!["raw/letter.txt".into()],
+            }],
+        };
+        let markdown = analysis_markdown("What compounds?", &answer, "Analysis — What compounds?");
+        assert!(markdown.contains("sources: raw/letter.txt"));
+        assert!(markdown.contains("[[concepts/compounding]]"));
     }
 }
 
@@ -744,6 +1222,7 @@ pub fn ingest_decide(
         cleanup(&held.vault, &held.branch, &held.worktree);
         append_log(
             &held.vault,
+            "ingest",
             &held.source_name,
             "Rejected in review; branch discarded.",
         )?;

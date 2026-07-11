@@ -14,7 +14,7 @@ wiki pages, agent instructions, and Git history portable across tools.
 - `packages/eva-mcp` — read-only MCP navigation tools for an agent: search,
   page reads, neighbors, and shortest paths.
 - `apps/desktop` — Tauri v2 + Vite graph explorer plus a Claude CLI-backed,
-  worktree-isolated ingest and review flow.
+  worktree-isolated ingest, cited query, and review flow.
 - `schema/` and `templates/vault/` — the generic V1 vault contract and the
   starter infrastructure seeded into an Eva-managed vault.
 
@@ -31,7 +31,9 @@ npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 Choose **New vault** from the opening screen, select a parent folder, and name
 the knowledge project. Eva creates a local Git repository, writes the V1
 contract and starter wiki, then opens the graph. Select **Ingest** to add the
-first source. Use **Open vault** for an existing Markdown vault.
+first source. Select **Query** to ask the maintained wiki a question; useful
+answers can be saved as a reviewable analysis page. Use **Open vault** for an
+existing Markdown vault.
 
 ## Privacy
 
