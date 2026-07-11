@@ -72,13 +72,29 @@ updated: 2026-07-11
   entity, concept, or analysis. Use it whenever a page contains source-derived
   claims.
 
-## Vault profile
+## Brain profile and vault profile
 
-New vaults record their working language, selected agent runtime, and optional
-purpose at the end of this document. Treat that profile as an instruction:
-write pages in the working language unless the human asks otherwise, and use
-the stated purpose to calibrate what is worth preserving. Humans can edit the
-profile as their project evolves.
+Eva records a **Brain profile** in `eva.json` and repeats its maintenance focus
+at the end of this file. The profile is a starting mode, not a locked content
+type: humans may change it in Eva's Brain Manager as their needs evolve.
+
+- `personal`: goals, observations, reflections, and timeline
+- `research`: thesis, evidence, contradictions, and bibliography
+- `reading`: chapters, characters, threads, and themes
+- `business`: projects, decisions, meetings, and risks
+- `planning`: objectives, constraints, options, and timeline
+- `course`: concepts, materials, practice, and revision
+- `blank`: a deliberately minimal, custom schema
+
+The profile's listed modules are maintenance priorities for the agent. They do
+not replace the canonical page types, and no agent should create a category
+that the human has not found useful.
+
+New vaults also record their working language, selected agent runtime, and
+optional purpose at the end of this document. Treat these settings as
+instructions: write pages in the working language unless the human asks
+otherwise, and use the stated purpose to calibrate what is worth preserving.
+Humans can edit the profile as their project evolves.
 
 Keep provenance close to knowledge. A summary must identify its raw document;
 an analysis must identify the pages or sources it synthesizes. Never claim a

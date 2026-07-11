@@ -50,6 +50,71 @@ const TYPE_COLORS: Record<string, string> = {
 const FALLBACK_COLOR = '#a6a294';
 const TYPE_ORDER = ['index', 'entity', 'concept', 'summary', 'analysis', 'person', 'project', 'note', 'log'];
 
+const BRAIN_PROFILES = [
+  {
+    id: 'personal',
+    label: 'Personal',
+    detail: 'Goals, observations, reflections, and a private timeline.',
+    modules: ['goals', 'observations', 'journal', 'timeline'],
+    purposeLabel: 'What would you like to track?',
+    purposePlaceholder: 'Goals, habits, health observations, or a question you want to understand…',
+  },
+  {
+    id: 'research',
+    label: 'Research',
+    detail: 'A thesis, evidence, contradictions, and open questions.',
+    modules: ['thesis', 'evidence', 'contradictions', 'bibliography'],
+    purposeLabel: 'What question are you investigating?',
+    purposePlaceholder: 'The topic, question, or thesis you want this brain to develop…',
+  },
+  {
+    id: 'reading',
+    label: 'Reading companion',
+    detail: 'Chapters, characters, plot threads, themes, and chronology.',
+    modules: ['chapters', 'characters', 'threads', 'themes'],
+    purposeLabel: 'Which book or text are you following?',
+    purposePlaceholder: 'Title, author, and any spoiler boundary you want Eva to respect…',
+  },
+  {
+    id: 'business',
+    label: 'Business record',
+    detail: 'Projects, decisions, meetings, risks, and local operating context.',
+    modules: ['projects', 'decisions', 'meetings', 'risks'],
+    purposeLabel: 'What business context should this brain maintain?',
+    purposePlaceholder: 'A team, company, customer area, project, or decision space…',
+  },
+  {
+    id: 'planning',
+    label: 'Planning',
+    detail: 'Objectives, constraints, options, decisions, and a living plan.',
+    modules: ['objectives', 'constraints', 'options', 'timeline'],
+    purposeLabel: 'What are you planning?',
+    purposePlaceholder: 'A trip, project, purchase, move, or other decision you are working through…',
+  },
+  {
+    id: 'course',
+    label: 'Course and learning',
+    detail: 'Concepts, materials, practice gaps, and revision prompts.',
+    modules: ['concepts', 'materials', 'practice', 'revision'],
+    purposeLabel: 'What are you learning?',
+    purposePlaceholder: 'The course, subject, skill, or syllabus you want to master…',
+  },
+  {
+    id: 'blank',
+    label: 'Blank / custom',
+    detail: 'A clean Eva standard with only the structure you choose to add.',
+    modules: ['knowledge-base'],
+    purposeLabel: 'What is this brain for?',
+    purposePlaceholder: 'Track a research topic, plan a trip, understand a company…',
+  },
+] as const;
+
+type BrainProfileId = (typeof BRAIN_PROFILES)[number]['id'];
+
+function profileDefinition(id: string): (typeof BRAIN_PROFILES)[number] {
+  return BRAIN_PROFILES.find((profile) => profile.id === id) ?? BRAIN_PROFILES.at(-1)!;
+}
+
 const colorFor = (type: string | null): string =>
   (type !== null && TYPE_COLORS[type]) || FALLBACK_COLOR;
 
@@ -112,6 +177,8 @@ const brainManagerListEl = document.getElementById('brain-manager-list') as HTML
 const brainManagerFormEl = document.getElementById('brain-manager-form') as HTMLFormElement;
 const brainManagerNameEl = document.getElementById('brain-manager-name') as HTMLElement;
 const brainManagerPathEl = document.getElementById('brain-manager-path') as HTMLElement;
+const brainManagerProfileEl = document.getElementById('brain-manager-profile') as HTMLSelectElement;
+const brainManagerModulesEl = document.getElementById('brain-manager-modules') as HTMLElement;
 const brainManagerLanguageEl = document.getElementById('brain-manager-language') as HTMLInputElement;
 const brainManagerAgentEls = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="brain-manager-agent"]'),
@@ -126,11 +193,14 @@ const appSettingsStatusEl = document.getElementById('app-settings-status') as HT
 const newVaultEl = document.getElementById('new-vault') as HTMLElement;
 const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
 const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
+const newVaultProfileEl = document.getElementById('new-vault-profile') as HTMLSelectElement;
+const newVaultProfileDetailEl = document.getElementById('new-vault-profile-detail') as HTMLElement;
 const newVaultLanguageEl = document.getElementById('new-vault-language') as HTMLInputElement;
 const newVaultAgentEls = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="new-vault-agent"]'),
 );
 const newVaultPurposeEl = document.getElementById('new-vault-purpose') as HTMLTextAreaElement;
+const newVaultPurposeLabelEl = document.getElementById('new-vault-purpose-label') as HTMLElement;
 const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElement;
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
 
@@ -182,6 +252,28 @@ function populateAppLanguageOptions(): void {
   appLanguageEl.value = preference;
 }
 
+function populateBrainProfileOptions(select: HTMLSelectElement, selected: string): void {
+  select.innerHTML = '';
+  for (const profile of BRAIN_PROFILES) {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = profile.label;
+    select.appendChild(option);
+  }
+  select.value = profileDefinition(selected).id;
+}
+
+function selectedNewVaultProfile(): BrainProfileId {
+  return profileDefinition(newVaultProfileEl.value).id;
+}
+
+function updateNewVaultProfileFrame(): void {
+  const profile = profileDefinition(selectedNewVaultProfile());
+  newVaultProfileDetailEl.textContent = profile.detail;
+  newVaultPurposeLabelEl.textContent = profile.purposeLabel;
+  newVaultPurposeEl.placeholder = profile.purposePlaceholder;
+}
+
 function applyInterfaceLanguage(): void {
   document.documentElement.lang = currentLocale();
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((element) => {
@@ -197,6 +289,8 @@ function applyInterfaceLanguage(): void {
     element.setAttribute('aria-label', t(element.dataset.i18nAriaLabel as TranslationKey));
   });
   populateAppLanguageOptions();
+  populateBrainProfileOptions(newVaultProfileEl, newVaultProfileEl.value || 'research');
+  updateNewVaultProfileFrame();
   if (!currentVault) vaultPathEl.textContent = t('nav.noBrain');
   refreshRecentViews();
   if (!brainLibraryEl.hidden) void loadBrainLibrary();
@@ -507,6 +601,8 @@ interface BrainEntry {
 }
 
 interface BrainSettings extends BrainEntry {
+  profile: BrainProfileId;
+  modules: string[];
   language: string;
   agent: 'codex' | 'claude';
   purpose: string;
@@ -668,6 +764,8 @@ function renderBrainManager(): void {
   brainManagerNameEl.textContent = settings.name;
   brainManagerPathEl.textContent = settings.path;
   brainManagerPathEl.title = settings.path;
+  populateBrainProfileOptions(brainManagerProfileEl, settings.profile);
+  brainManagerModulesEl.textContent = `Modules: ${settings.modules.join(' · ')}`;
   brainManagerLanguageEl.value = settings.language;
   brainManagerAgentEls.forEach((input) => {
     input.checked = input.value === settings.agent;
@@ -761,6 +859,7 @@ async function saveBrainManagerSettings(): Promise<void> {
   try {
     brainManagerSettings = await invoke<BrainSettings>('brain_settings_update', {
       vault: settings.path,
+      profile: profileDefinition(brainManagerProfileEl.value).id,
       language,
       agent,
       purpose: brainManagerPurposeEl.value.trim(),
@@ -837,6 +936,8 @@ function updateNewVaultCreateState(): void {
 function closeNewVault(): void {
   newVaultEl.hidden = true;
   newVaultNameEl.value = '';
+  populateBrainProfileOptions(newVaultProfileEl, 'research');
+  updateNewVaultProfileFrame();
   newVaultLanguageEl.value = 'English';
   resetNewVaultAgent();
   newVaultPurposeEl.value = '';
@@ -848,6 +949,8 @@ function closeNewVault(): void {
 function showNewVault(): void {
   newVaultEl.hidden = false;
   newVaultNameEl.value = '';
+  populateBrainProfileOptions(newVaultProfileEl, 'research');
+  updateNewVaultProfileFrame();
   newVaultLanguageEl.value = 'English';
   resetNewVaultAgent();
   newVaultPurposeEl.value = '';
@@ -870,6 +973,7 @@ async function createNewVault(): Promise<void> {
   try {
     const root = await invoke<string>('brain_create', {
       name,
+      profile: selectedNewVaultProfile(),
       language,
       agent: selectedNewVaultAgent(),
       purpose: newVaultPurposeEl.value.trim(),
@@ -1926,6 +2030,10 @@ brainManagerFormEl.addEventListener('submit', (event) => {
   event.preventDefault();
   void saveBrainManagerSettings();
 });
+brainManagerProfileEl.addEventListener('change', () => {
+  const profile = profileDefinition(brainManagerProfileEl.value);
+  brainManagerModulesEl.textContent = `Modules: ${profile.modules.join(' · ')}`;
+});
 document.getElementById('app-settings-close')!.addEventListener('click', closeAppSettings);
 appLanguageEl.addEventListener('change', changeAppLanguage);
 document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
@@ -1934,6 +2042,11 @@ newVaultNameEl.addEventListener('input', () => {
   updateNewVaultCreateState();
 });
 newVaultLanguageEl.addEventListener('input', () => {
+  setNewVaultError(null);
+  updateNewVaultCreateState();
+});
+newVaultProfileEl.addEventListener('change', () => {
+  updateNewVaultProfileFrame();
   setNewVaultError(null);
   updateNewVaultCreateState();
 });

@@ -143,6 +143,9 @@
             <span id="brain-manager-name" class="brain-manager-name"></span>
             <span id="brain-manager-path" class="brain-manager-path"></span>
           </div>
+          <label class="form-label" for="brain-manager-profile">Brain profile</label>
+          <select id="brain-manager-profile" class="text-input compact"></select>
+          <p id="brain-manager-modules" class="profile-modules"></p>
           <label class="form-label" for="brain-manager-language" data-i18n="manager.language">Working language</label>
           <input id="brain-manager-language" class="text-input compact" type="text" list="vault-languages" maxlength="48" autocomplete="off" />
           <fieldset class="runtime-fieldset brain-manager-runtime">
@@ -191,6 +194,11 @@
         </div>
         <label class="form-label" for="new-vault-name" data-i18n="new.name">Brain name</label>
         <input id="new-vault-name" class="text-input" type="text" maxlength="80" autocomplete="off" data-i18n-placeholder="new.namePlaceholder" placeholder="Research atlas" />
+        <div class="brain-profile-field">
+          <label class="form-label" for="new-vault-profile">Brain profile</label>
+          <select id="new-vault-profile" class="text-input compact"></select>
+          <p id="new-vault-profile-detail" class="profile-detail"></p>
+        </div>
         <div class="setup-grid">
           <div>
             <label class="form-label" for="new-vault-language" data-i18n="new.language">Working language</label>
@@ -220,7 +228,7 @@
           </div>
           <p class="field-hint" data-i18n="new.credentials">Eva stores no credentials. The selected runtime is saved with this local brain.</p>
         </fieldset>
-        <label class="form-label" for="new-vault-purpose"><span data-i18n="new.purpose">What is this brain for?</span> <span class="optional" data-i18n="common.optional">Optional</span></label>
+        <label class="form-label" for="new-vault-purpose"><span id="new-vault-purpose-label" data-i18n="new.purpose">What is this brain for?</span> <span class="optional" data-i18n="common.optional">Optional</span></label>
         <textarea id="new-vault-purpose" class="purpose-input" rows="2" maxlength="240" data-i18n-placeholder="new.purposePlaceholder" placeholder="Track a research topic, plan a trip, understand a company…"></textarea>
         <div class="brain-home">
           <span class="form-label" data-i18n="new.directory">Your brains</span>

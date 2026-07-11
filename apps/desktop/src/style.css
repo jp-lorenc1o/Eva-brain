@@ -1030,6 +1030,28 @@ body.operation-modal-open #ingest-status {
   margin-bottom: 16px;
 }
 
+#brain-manager-profile {
+  margin-bottom: 0;
+}
+
+.profile-modules,
+.profile-detail {
+  margin: 6px 0 16px;
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+}
+
+.brain-profile-field {
+  margin-bottom: 16px;
+}
+
+.brain-profile-field .text-input {
+  margin-bottom: 0;
+}
+
 .brain-manager-runtime {
   margin-bottom: 15px;
 }

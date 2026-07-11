@@ -24,12 +24,124 @@ struct VaultProfile {
     language: String,
     agent: String,
     purpose: String,
+    brain_profile: BrainProfile,
 }
 
 #[derive(Deserialize)]
 struct BrainManifest {
     format: String,
     version: u64,
+    #[serde(default)]
+    profile: Option<String>,
+    #[serde(default)]
+    modules: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BrainProfile {
+    Personal,
+    Research,
+    Reading,
+    Business,
+    Planning,
+    Course,
+    Blank,
+}
+
+impl BrainProfile {
+    fn from_choice(value: &str) -> Result<Self, String> {
+        match value {
+            "personal" => Ok(Self::Personal),
+            "research" => Ok(Self::Research),
+            "reading" => Ok(Self::Reading),
+            "business" => Ok(Self::Business),
+            "planning" => Ok(Self::Planning),
+            "course" => Ok(Self::Course),
+            "blank" => Ok(Self::Blank),
+            _ => Err("choose a supported brain profile".into()),
+        }
+    }
+
+    fn from_manifest(value: Option<&str>) -> Result<Self, String> {
+        match value {
+            None => Ok(Self::Blank),
+            Some(value) => Self::from_choice(value).map_err(|_| {
+                format!("Eva does not support this brain's profile: {value}")
+            }),
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Personal => "personal",
+            Self::Research => "research",
+            Self::Reading => "reading",
+            Self::Business => "business",
+            Self::Planning => "planning",
+            Self::Course => "course",
+            Self::Blank => "blank",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Personal => "Personal",
+            Self::Research => "Research",
+            Self::Reading => "Reading companion",
+            Self::Business => "Business record",
+            Self::Planning => "Planning",
+            Self::Course => "Course and learning",
+            Self::Blank => "Blank / custom",
+        }
+    }
+
+    fn modules(self) -> &'static [&'static str] {
+        match self {
+            Self::Personal => &["goals", "observations", "journal", "timeline"],
+            Self::Research => &["thesis", "evidence", "contradictions", "bibliography"],
+            Self::Reading => &["chapters", "characters", "threads", "themes"],
+            Self::Business => &["projects", "decisions", "meetings", "risks"],
+            Self::Planning => &["objectives", "constraints", "options", "timeline"],
+            Self::Course => &["concepts", "materials", "practice", "revision"],
+            Self::Blank => &["knowledge-base"],
+        }
+    }
+
+    fn maintenance_focus(self) -> &'static str {
+        match self {
+            Self::Personal => "Track patterns and change over time without making diagnoses or judgments.",
+            Self::Research => "Maintain a defensible thesis, separate claims from evidence, and surface contradictions and open questions.",
+            Self::Reading => "Maintain characters, chapters, plot threads, themes, and a chronology while respecting the reader's spoiler boundary.",
+            Self::Business => "Maintain current decisions, owners, risks, projects, and evidence from local business records; do not invent stakeholder agreement.",
+            Self::Planning => "Maintain objectives, constraints, options, decisions, and the evolving plan rather than a disposable checklist.",
+            Self::Course => "Maintain concepts, learning materials, practice gaps, and revision prompts that support durable understanding.",
+            Self::Blank => "Maintain only the durable structures the human explicitly finds useful; let the schema evolve deliberately.",
+        }
+    }
+
+    fn starter_title(self) -> &'static str {
+        match self {
+            Self::Personal => "Personal compass",
+            Self::Research => "Research frame",
+            Self::Reading => "Reading companion",
+            Self::Business => "Operating brief",
+            Self::Planning => "Planning brief",
+            Self::Course => "Learning map",
+            Self::Blank => "Starting point",
+        }
+    }
+
+    fn starter_sections(self) -> &'static [&'static str] {
+        match self {
+            Self::Personal => &["Goals", "Observations", "Reflections", "Questions to revisit"],
+            Self::Research => &["Question or thesis", "Evidence to collect", "Competing explanations", "Open questions"],
+            Self::Reading => &["Work", "Chapters", "Characters and places", "Threads and themes"],
+            Self::Business => &["Current priorities", "Decisions", "Risks and assumptions", "Owners and follow-up"],
+            Self::Planning => &["Objective", "Constraints", "Options", "Decisions and next steps"],
+            Self::Course => &["Learning goals", "Core concepts", "Practice", "Revision queue"],
+            Self::Blank => &["Focus", "Useful entities and concepts", "Questions"],
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +208,8 @@ pub struct BrainEntry {
 pub struct BrainSettings {
     pub name: String,
     pub path: String,
+    pub profile: String,
+    pub modules: Vec<String>,
     pub language: String,
     pub agent: String,
     pub purpose: String,
@@ -275,7 +389,7 @@ fn require_vault_repo(vault: &Path) -> Result<PathBuf, String> {
     Ok(root)
 }
 
-fn validate_brain_manifest(text: &str) -> Result<(), String> {
+fn parse_brain_manifest(text: &str) -> Result<BrainManifest, String> {
     let manifest: BrainManifest = serde_json::from_str(text)
         .map_err(|_| "eva.json is not a valid Eva Brain Standard manifest".to_string())?;
     if manifest.format != BRAIN_FORMAT {
@@ -287,13 +401,54 @@ fn validate_brain_manifest(text: &str) -> Result<(), String> {
             manifest.version, BRAIN_STANDARD_VERSION
         ));
     }
-    Ok(())
+    let profile = BrainProfile::from_manifest(manifest.profile.as_deref())?;
+    if !manifest.modules.is_empty() {
+        let expected = profile
+            .modules()
+            .iter()
+            .map(|module| (*module).to_string())
+            .collect::<Vec<_>>();
+        if manifest.modules != expected {
+            return Err("eva.json modules do not match its selected brain profile".into());
+        }
+    }
+    Ok(manifest)
+}
+
+fn validate_brain_manifest(text: &str) -> Result<(), String> {
+    parse_brain_manifest(text).map(|_| ())
 }
 
 fn verify_brain_standard(root: &Path) -> Result<(), String> {
     let manifest = fs::read_to_string(root.join(BRAIN_MANIFEST_FILE))
         .map_err(|_| "this folder does not contain an Eva Brain Standard manifest (eva.json)".to_string())?;
     validate_brain_manifest(&manifest)
+}
+
+fn brain_profile_for_vault(root: &Path) -> Result<BrainProfile, String> {
+    let manifest = fs::read_to_string(root.join(BRAIN_MANIFEST_FILE))
+        .map_err(|e| format!("read eva.json: {e}"))?;
+    Ok(BrainProfile::from_manifest(
+        parse_brain_manifest(&manifest)?.profile.as_deref(),
+    )?)
+}
+
+fn brain_manifest(profile: Option<BrainProfile>) -> String {
+    let mut manifest = serde_json::json!({
+        "format": BRAIN_FORMAT,
+        "version": BRAIN_STANDARD_VERSION,
+    });
+    if let Some(profile) = profile {
+        manifest["profile"] = serde_json::Value::String(profile.id().into());
+        manifest["modules"] = serde_json::Value::Array(
+            profile
+                .modules()
+                .iter()
+                .map(|module| serde_json::Value::String((*module).into()))
+                .collect(),
+        );
+    }
+    serde_json::to_string_pretty(&manifest).unwrap_or_else(|_| BRAIN_MANIFEST.into()) + "\n"
 }
 
 /// Agent operations are permitted only on a Git-root brain that declares a
@@ -389,12 +544,18 @@ fn profile_text(value: &str, field: &str, max: usize, required: bool) -> Result<
     Ok(value)
 }
 
-fn vault_profile(language: &str, agent: &str, purpose: &str) -> Result<VaultProfile, String> {
+fn vault_profile_with_brain_profile(
+    language: &str,
+    agent: &str,
+    purpose: &str,
+    brain_profile: &str,
+) -> Result<VaultProfile, String> {
     let runtime = AgentRuntime::from_setup_choice(agent)?;
     Ok(VaultProfile {
         language: profile_text(language, "working language", 48, true)?,
         agent: runtime.profile_label().into(),
         purpose: profile_text(purpose, "purpose", 240, false)?,
+        brain_profile: BrainProfile::from_choice(brain_profile)?,
     })
 }
 
@@ -443,7 +604,20 @@ fn eva_schema(profile: Option<&VaultProfile>) -> String {
     let Some(profile) = profile else {
         return EVA_MD.into();
     };
-    format!("{EVA_MD}\n\n{}", profile_section(profile))
+    format!(
+        "{EVA_MD}\n\n{}\n{}",
+        brain_profile_section(profile.brain_profile),
+        profile_section(profile)
+    )
+}
+
+fn brain_profile_section(profile: BrainProfile) -> String {
+    format!(
+        "### Brain profile\n\n- **Profile:** {}\n- **Modules:** {}\n- **Maintenance focus:** {}\n",
+        profile.label(),
+        profile.modules().join(", "),
+        profile.maintenance_focus(),
+    )
 }
 
 fn profile_section(profile: &VaultProfile) -> String {
@@ -479,10 +653,57 @@ fn replace_profile_section(schema: &str, profile: &VaultProfile) -> String {
     }
 }
 
+fn replace_brain_profile_section(schema: &str, profile: BrainProfile) -> String {
+    const PROFILE_HEADER: &str = "### Brain profile";
+    let section = brain_profile_section(profile);
+    let Some(start) = schema.find(PROFILE_HEADER) else {
+        return format!("{}\n\n{section}", schema.trim_end());
+    };
+    let after_header = start + PROFILE_HEADER.len();
+    let tail = &schema[after_header..];
+    let end = tail
+        .find("\n### ")
+        .map(|offset| after_header + offset + 1)
+        .unwrap_or(schema.len());
+    let before = schema[..start].trim_end();
+    let after = schema[end..].trim_start();
+    if after.is_empty() {
+        format!("{before}\n\n{section}")
+    } else {
+        format!("{before}\n\n{section}\n{after}\n")
+    }
+}
+
+fn profile_index(profile: BrainProfile) -> String {
+    format!(
+        "{INDEX_MD}\n## {}\n\n- [[analyses/starting-point]] — {}\n",
+        profile.label(),
+        profile.starter_title(),
+    )
+}
+
+fn profile_starter_page(profile: BrainProfile) -> String {
+    let sections = profile
+        .starter_sections()
+        .iter()
+        .map(|section| format!("## {section}\n\n"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "---\ntitle: {}\ntype: analysis\n---\n\n# {}\n\nEva maintains this page as the starting frame for this {} brain. {}\n\n{}",
+        profile.starter_title(),
+        profile.starter_title(),
+        profile.label().to_lowercase(),
+        profile.maintenance_focus(),
+        sections,
+    )
+}
+
 fn brain_settings(vault: &Path) -> Result<BrainSettings, String> {
     let root = require_eva_brain(vault)?;
     let schema = fs::read_to_string(root.join("EVA.md")).map_err(|e| format!("read EVA.md: {e}"))?;
     let entry = brain_entry(&root)?;
+    let brain_profile = brain_profile_for_vault(&root)?;
     let language = profile_value(&schema, "Working language")
         .unwrap_or("English")
         .to_string();
@@ -493,6 +714,8 @@ fn brain_settings(vault: &Path) -> Result<BrainSettings, String> {
     Ok(BrainSettings {
         name: entry.name,
         path: entry.path,
+        profile: brain_profile.id().into(),
+        modules: brain_profile.modules().iter().map(|module| (*module).into()).collect(),
         language,
         agent: runtime_for_vault(&root)?.setup_choice().to_string(),
         purpose,
@@ -504,18 +727,31 @@ fn update_brain_settings(
     language: &str,
     agent: &str,
     purpose: &str,
+    brain_profile: &str,
 ) -> Result<BrainSettings, String> {
     let root = require_eva_brain(vault)?;
-    let profile = vault_profile(language, agent, purpose)?;
+    let profile = vault_profile_with_brain_profile(language, agent, purpose, brain_profile)?;
     if !git(&root, &["status", "--porcelain"])?.trim().is_empty() {
         return Err("commit or resolve the brain's current changes before updating its settings".into());
     }
     let schema_path = root.join("EVA.md");
     let existing = fs::read_to_string(&schema_path).map_err(|e| format!("read EVA.md: {e}"))?;
-    let updated = replace_profile_section(&existing, &profile);
+    let with_brain_profile = replace_brain_profile_section(&existing, profile.brain_profile);
+    let updated = replace_profile_section(&with_brain_profile, &profile);
+    let manifest_path = root.join(BRAIN_MANIFEST_FILE);
+    let existing_manifest = fs::read_to_string(&manifest_path).map_err(|e| format!("read eva.json: {e}"))?;
+    let updated_manifest = brain_manifest(Some(profile.brain_profile));
+    let mut staged = vec!["add"];
     if existing != updated {
         fs::write(&schema_path, updated).map_err(|e| format!("write EVA.md: {e}"))?;
-        git(&root, &["add", "EVA.md"])?;
+        staged.push("EVA.md");
+    }
+    if existing_manifest != updated_manifest {
+        fs::write(&manifest_path, updated_manifest).map_err(|e| format!("write eva.json: {e}"))?;
+        staged.push(BRAIN_MANIFEST_FILE);
+    }
+    if staged.len() > 1 {
+        git(&root, &staged)?;
         git(&root, &["commit", "-m", "config: update brain profile"])?;
     }
     brain_settings(&root)
@@ -530,7 +766,8 @@ fn bootstrap_vault(root: &Path, profile: Option<&VaultProfile>) -> Result<bool, 
     if manifest_path.exists() {
         verify_brain_standard(root)?;
     } else {
-        fs::write(&manifest_path, BRAIN_MANIFEST).map_err(|e| e.to_string())?;
+        fs::write(&manifest_path, brain_manifest(profile.map(|p| p.brain_profile)))
+            .map_err(|e| e.to_string())?;
         staged.push(BRAIN_MANIFEST_FILE);
     }
     if !root.join("EVA.md").exists() {
@@ -546,8 +783,21 @@ fn bootstrap_vault(root: &Path, profile: Option<&VaultProfile>) -> Result<bool, 
         staged.push("CLAUDE.md");
     }
     if !root.join("index.md").exists() {
-        fs::write(root.join("index.md"), INDEX_MD).map_err(|e| e.to_string())?;
+        let index = profile
+            .map(|p| profile_index(p.brain_profile))
+            .unwrap_or_else(|| INDEX_MD.into());
+        fs::write(root.join("index.md"), index).map_err(|e| e.to_string())?;
         staged.push("index.md");
+    }
+    if let Some(profile) = profile {
+        let starter_dir = root.join("analyses");
+        let starter_path = starter_dir.join("starting-point.md");
+        if !starter_path.exists() {
+            fs::create_dir_all(starter_dir).map_err(|e| e.to_string())?;
+            fs::write(starter_path, profile_starter_page(profile.brain_profile))
+                .map_err(|e| e.to_string())?;
+            staged.push("analyses/starting-point.md");
+        }
     }
     if !root.join("log.md").exists() {
         fs::write(root.join("log.md"), LOG_MD).map_err(|e| e.to_string())?;
@@ -1741,8 +1991,9 @@ pub fn brain_create(
     language: String,
     agent: String,
     purpose: String,
+    profile: String,
 ) -> Result<String, String> {
-    let profile = vault_profile(&language, &agent, &purpose)?;
+    let profile = vault_profile_with_brain_profile(&language, &agent, &purpose, &profile)?;
     let root = create_brain(&name, &profile)?;
     Ok(root.to_string_lossy().to_string())
 }
@@ -1772,8 +2023,9 @@ pub fn brain_settings_update(
     language: String,
     agent: String,
     purpose: String,
+    profile: String,
 ) -> Result<BrainSettings, String> {
-    update_brain_settings(Path::new(&vault), &language, &agent, &purpose)
+    update_brain_settings(Path::new(&vault), &language, &agent, &purpose, &profile)
 }
 
 #[tauri::command]
@@ -1881,7 +2133,7 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_settings_get, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, profile_section, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile, verify_agent_write_boundary, verify_brain_standard, AgentRuntime, QueryAnswer, QueryCitation, VaultProfile, BRAIN_MANIFEST, EVA_MD};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, profile_section, profile_starter_page, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, AgentRuntime, BrainProfile, QueryAnswer, QueryCitation, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD};
     use std::{
         fs,
         path::Path,
@@ -1916,11 +2168,12 @@ mod tests {
 
     #[test]
     fn new_brain_profile_is_written_into_the_agent_schema() {
-        let profile = vault_profile("Español", "claude", "Investigación de mercado").unwrap();
+        let profile = vault_profile_with_brain_profile("Español", "claude", "Investigación de mercado", "research").unwrap();
         let schema = eva_schema(Some(&profile));
         assert!(schema.contains("**Working language:** Español"));
         assert!(schema.contains("**Agent runtime:** Claude CLI"));
         assert!(schema.contains("**Purpose:** Investigación de mercado"));
+        assert!(schema.contains("**Profile:** Research"));
     }
 
     #[test]
@@ -1929,11 +2182,13 @@ mod tests {
             language: "English".into(),
             agent: "Claude CLI".into(),
             purpose: "Original purpose".into(),
+            brain_profile: BrainProfile::Blank,
         };
         let updated = VaultProfile {
             language: "Español".into(),
             agent: "Codex CLI".into(),
             purpose: "Updated purpose".into(),
+            brain_profile: BrainProfile::Research,
         };
         let schema = format!(
             "# Custom brain rules\n\n{}\n### Domain extension\n\nKeep this rule.\n",
@@ -1951,6 +2206,17 @@ mod tests {
     #[test]
     fn brain_standard_manifest_declares_the_supported_version() {
         assert!(validate_brain_manifest(BRAIN_MANIFEST).is_ok());
+    }
+
+    #[test]
+    fn profile_manifest_and_starter_page_match_the_selected_brain_profile() {
+        let manifest = brain_manifest(Some(BrainProfile::Reading));
+        assert!(validate_brain_manifest(&manifest).is_ok());
+        assert!(manifest.contains("\"profile\": \"reading\""));
+        assert!(manifest.contains("\"characters\""));
+        let starter = profile_starter_page(BrainProfile::Reading);
+        assert!(starter.contains("title: Reading companion"));
+        assert!(starter.contains("## Characters and places"));
     }
 
     #[test]
@@ -1976,6 +2242,29 @@ mod tests {
     }
 
     #[test]
+    fn profile_bootstrap_adds_a_linked_starting_frame() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-profile-bootstrap-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+        let profile = vault_profile_with_brain_profile("English", "codex", "Study a novel", "reading").unwrap();
+
+        assert!(bootstrap_vault(&root, Some(&profile)).unwrap());
+        let manifest = fs::read_to_string(root.join(BRAIN_MANIFEST_FILE)).unwrap();
+        assert!(manifest.contains("\"profile\": \"reading\""));
+        assert!(fs::read_to_string(root.join("index.md"))
+            .unwrap()
+            .contains("[[analyses/starting-point]]"));
+        assert!(fs::read_to_string(root.join("analyses/starting-point.md"))
+            .unwrap()
+            .contains("## Characters and places"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn brain_manager_saves_a_profile_in_local_history() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1986,9 +2275,10 @@ mod tests {
         init_git_repo(&root).unwrap();
         bootstrap_vault(&root, None).unwrap();
 
-        let settings = update_brain_settings(&root, "Español", "codex", "Market research").unwrap();
+        let settings = update_brain_settings(&root, "Español", "codex", "Market research", "research").unwrap();
         assert_eq!(settings.language, "Español");
         assert_eq!(settings.agent, "codex");
+        assert_eq!(settings.profile, "research");
         assert_eq!(settings.purpose, "Market research");
         assert!(git(&root, &["log", "-1", "--format=%s"])
             .unwrap()
@@ -2018,14 +2308,14 @@ mod tests {
     #[test]
     fn new_brains_can_choose_codex_or_claude() {
         assert_eq!(
-            vault_profile("English", "codex", "").unwrap().agent,
+            vault_profile_with_brain_profile("English", "codex", "", "personal").unwrap().agent,
             "Codex CLI"
         );
         assert_eq!(
-            vault_profile("English", "claude", "").unwrap().agent,
+            vault_profile_with_brain_profile("English", "claude", "", "research").unwrap().agent,
             "Claude CLI"
         );
-        assert!(vault_profile("English", "other", "").is_err());
+        assert!(vault_profile_with_brain_profile("English", "other", "", "research").is_err());
     }
 
     #[test]

@@ -33,8 +33,9 @@ npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ## First brain
 
 Choose **New brain** from the opening screen and name the knowledge project.
-The setup sheet asks for its working language, AI runtime, and optional
-purpose; Eva stores that profile in `EVA.md`, creates a starter brain in
+The setup sheet asks for a Brain Profile, working language, AI runtime, and
+optional purpose; Eva stores that profile and its modules in `eva.json` and
+`EVA.md`, creates a tailored linked starter page in
 `~/Documents/Eva/Brains`, then opens the graph. Choose Codex or Claude Code;
 Eva uses the CLI already signed in on the computer and never stores API keys or
 credentials. Eva uses Git only locally to make reviews and undoable history
@@ -45,9 +46,10 @@ Use **Open brain** to choose from Eva's managed brain library. **Import a
 brain** copies an external Markdown folder into `~/Documents/Eva/Brains` so it
 joins that library without changing the original folder.
 
-Use **Manage brains** to see each local folder and update its working language,
-AI runtime, or purpose. Eva records a profile change in that brain's local Git
-history; it does not create an account, remote, or cloud copy.
+Use **Manage brains** to see each local folder and update its Brain Profile,
+working language, AI runtime, or purpose. Eva records a profile change in that
+brain's local Git history; it does not create an account, remote, or cloud
+copy.
 
 ## Interface language
 

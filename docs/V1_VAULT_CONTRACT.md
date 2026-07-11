@@ -26,10 +26,11 @@ agent contract is `EVA.md`; `AGENTS.md` and `CLAUDE.md` merely point compatible
 agents to it.
 
 The app's **New brain** flow creates a folder in `~/Documents/Eva/Brains`,
-initializes a local Git repository on `main`, asks for the working language,
-agent runtime, and an optional purpose, then writes that profile into `EVA.md`
-with the initial infrastructure. It also writes `eva.json`, the machine-readable
-Eva Brain Standard version marker. This local repository does not need a GitHub
+initializes a local Git repository on `main`, asks for a Brain Profile,
+working language, agent runtime, and an optional purpose, then writes the
+selected profile and its maintenance modules into `EVA.md` with the initial
+infrastructure. It also writes `eva.json`, the machine-readable Eva Brain
+Standard marker, including the selected profile and modules. This local repository does not need a GitHub
 account, a remote, or a configured Git identity: Eva supplies command-local
 `Eva <eva@local>` metadata for history it creates. Opening an existing Git-root
 brain writes only missing infrastructure files:
