@@ -6,6 +6,16 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import {
+  appLanguagePreference,
+  currentLocale,
+  localeNames,
+  locales,
+  setAppLanguage,
+  t,
+  type AppLanguage,
+  type TranslationKey,
+} from './i18n';
+import {
   buildGraph,
   buildVault,
   lintVault,
@@ -110,6 +120,9 @@ const brainManagerPurposeEl = document.getElementById('brain-manager-purpose') a
 const brainManagerErrorEl = document.getElementById('brain-manager-error') as HTMLElement;
 const brainManagerStatusEl = document.getElementById('brain-manager-status') as HTMLElement;
 const brainManagerSaveEl = document.getElementById('brain-manager-save') as HTMLButtonElement;
+const appSettingsEl = document.getElementById('app-settings') as HTMLElement;
+const appLanguageEl = document.getElementById('app-language') as HTMLSelectElement;
+const appSettingsStatusEl = document.getElementById('app-settings-status') as HTMLElement;
 const newVaultEl = document.getElementById('new-vault') as HTMLElement;
 const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
 const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
@@ -152,6 +165,51 @@ let brainManagerSelectedPath: string | null = null;
 let brainManagerSettings: BrainSettings | null = null;
 let brainManagerLoadError: string | null = null;
 const agentActive = new Set<string>();
+
+function populateAppLanguageOptions(): void {
+  const preference = appLanguagePreference();
+  appLanguageEl.innerHTML = '';
+  const system = document.createElement('option');
+  system.value = 'system';
+  system.textContent = t('settings.system');
+  appLanguageEl.appendChild(system);
+  for (const locale of locales) {
+    const option = document.createElement('option');
+    option.value = locale;
+    option.textContent = localeNames[locale];
+    appLanguageEl.appendChild(option);
+  }
+  appLanguageEl.value = preference;
+}
+
+function applyInterfaceLanguage(): void {
+  document.documentElement.lang = currentLocale();
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((element) => {
+    element.textContent = t(element.dataset.i18n as TranslationKey);
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-placeholder]').forEach((element) => {
+    element.setAttribute('placeholder', t(element.dataset.i18nPlaceholder as TranslationKey));
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((element) => {
+    element.title = t(element.dataset.i18nTitle as TranslationKey);
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-aria-label]').forEach((element) => {
+    element.setAttribute('aria-label', t(element.dataset.i18nAriaLabel as TranslationKey));
+  });
+  populateAppLanguageOptions();
+  if (!currentVault) vaultPathEl.textContent = t('nav.noBrain');
+  refreshRecentViews();
+  if (!brainLibraryEl.hidden) void loadBrainLibrary();
+  if (!brainManagerEl.hidden) renderBrainManager();
+  if (!lintPanelEl.hidden) renderLintPanel();
+  if (!logPanelEl.hidden) renderLogPanel();
+  if (!queryPanelEl.hidden && !queryPanelEl.classList.contains('is-processing')) setQueryRunning(false);
+}
+
+function setAppSettingsStatus(message: string | null): void {
+  appSettingsStatusEl.hidden = !message;
+  appSettingsStatusEl.textContent = message ?? '';
+}
 
 /* Panel exclusion zones ------------------------------------------------------
    Every visible vellum sheet claims its bounding rect (plus a margin) as
@@ -406,7 +464,7 @@ function renderRecentsInto(container: HTMLElement, errorMessage?: string): void 
   if (recents.length > 0) {
     const label = document.createElement('p');
     label.className = 'recent-label';
-    label.textContent = 'Recent';
+    label.textContent = t('recent.label');
     container.appendChild(label);
     for (const path of recents) {
       const row = document.createElement('button');
@@ -715,6 +773,32 @@ async function saveBrainManagerSettings(): Promise<void> {
     brainManagerSaving = false;
     brainManagerSaveEl.disabled = false;
   }
+}
+
+function closeAppSettings(): void {
+  appSettingsEl.hidden = true;
+  setAppSettingsStatus(null);
+  syncOperationModal();
+}
+
+function showAppSettings(): void {
+  closeBrainLibrary();
+  if (!newVaultEl.hidden) closeNewVault();
+  if (!queryPanelEl.hidden) closeQuery();
+  if (!brainManagerEl.hidden) closeBrainManager();
+  closeSidePanels();
+  appSettingsEl.hidden = false;
+  setAppSettingsStatus(null);
+  populateAppLanguageOptions();
+  syncOperationModal();
+  window.setTimeout(() => appLanguageEl.focus(), 0);
+}
+
+function changeAppLanguage(): void {
+  const next = appLanguageEl.value as AppLanguage;
+  setAppLanguage(next);
+  applyInterfaceLanguage();
+  setAppSettingsStatus(t('settings.hint'));
 }
 
 function setNewVaultError(message: string | null): void {
@@ -1148,7 +1232,7 @@ function goHome(): void {
   healthReport = null;
   healthError = null;
   healthCheckRunning = false;
-  vaultPathEl.textContent = 'No brain open';
+  vaultPathEl.textContent = t('nav.noBrain');
   vaultPathEl.title = '';
   legendEl.hidden = true;
   commandEl.hidden = true;
@@ -1167,7 +1251,7 @@ function syncOpButtons(): void {
 }
 
 function operationModalIsOpen(): boolean {
-  return !queryPanelEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden;
+  return !queryPanelEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden || !appSettingsEl.hidden;
 }
 
 function syncOperationModal(): void {
@@ -1533,8 +1617,8 @@ function setQueryRunning(running: boolean, label?: string): void {
   queryQuestionEl.readOnly = running;
   queryPanelEl.classList.toggle('is-processing', running);
   queryStatusEl.hidden = !running;
-  queryStatusEl.textContent = running ? label ?? 'Eva is searching the brain and tracing sources…' : '';
-  querySubmitEl.textContent = running ? 'Processing' : 'Ask brain';
+  queryStatusEl.textContent = running ? label ?? t('query.searching') : '';
+  querySubmitEl.textContent = running ? t('query.processing') : t('query.ask');
   opQueryEl.classList.toggle('active', running);
 }
 
@@ -1832,6 +1916,8 @@ document.getElementById('new-vault-button')!.addEventListener('click', showNewVa
 document.getElementById('empty-new')!.addEventListener('click', showNewVault);
 document.getElementById('manage-brains')!.addEventListener('click', showBrainManager);
 document.getElementById('empty-manage')!.addEventListener('click', showBrainManager);
+document.getElementById('app-settings-button')!.addEventListener('click', showAppSettings);
+document.getElementById('empty-settings')!.addEventListener('click', showAppSettings);
 document.getElementById('brain-library-close')!.addEventListener('click', closeBrainLibrary);
 brainLibraryImportEl.addEventListener('click', () => void importBrain());
 document.getElementById('brain-library-manage')!.addEventListener('click', showBrainManager);
@@ -1844,6 +1930,8 @@ brainManagerFormEl.addEventListener('submit', (event) => {
   event.preventDefault();
   void saveBrainManagerSettings();
 });
+document.getElementById('app-settings-close')!.addEventListener('click', closeAppSettings);
+appLanguageEl.addEventListener('change', changeAppLanguage);
 document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
 newVaultNameEl.addEventListener('input', () => {
   setNewVaultError(null);
@@ -1886,6 +1974,7 @@ operationScrimEl.addEventListener('click', () => {
   if (!reviewEl.hidden) return;
   if (!queryPanelEl.hidden) closeQuery();
   else if (!brainManagerEl.hidden) closeBrainManager();
+  else if (!appSettingsEl.hidden) closeAppSettings();
   else closeSidePanels();
 });
 
@@ -1900,6 +1989,10 @@ document.addEventListener('keydown', (event) => {
   }
   if (!brainManagerEl.hidden) {
     closeBrainManager();
+    return;
+  }
+  if (!appSettingsEl.hidden) {
+    closeAppSettings();
     return;
   }
   if (!brainLibraryEl.hidden) {
@@ -1928,7 +2021,7 @@ window.addEventListener('resize', () => {
   }
 });
 
-renderRecentsInto(recentEl);
+applyInterfaceLanguage();
 updateExclusions();
 
 // Dev-only test hooks (stripped from production builds): VITE_DEV_VAULT

@@ -13,135 +13,133 @@
         <img src="/app-icon-reversed.png" alt="" width="56" height="56" draggable="false" />
         <span>Eva</span>
       </div>
-      <p class="empty-kicker">LLM Brain</p>
-      <h1>Begin with a brain</h1>
-      <p class="empty-desc">
-        Eva turns curated sources into a maintained, interlinked body of knowledge.
-        Start a new brain or open one you already keep on disk.
-      </p>
+      <p class="empty-kicker" data-i18n="home.kicker">LLM Brain</p>
+      <h1 data-i18n="home.title">Begin with a brain</h1>
+      <p class="empty-desc" data-i18n="home.copy">Eva turns curated sources into a maintained, interlinked body of knowledge. Start a new brain or open one you already keep on disk.</p>
       <div class="launch-menu">
         <button id="empty-new" class="launch-choice" type="button">
-          <span class="launch-choice-title">Create a new brain</span>
-          <span class="launch-choice-detail">Set its language, purpose, and AI setup.</span>
+          <span class="launch-choice-title" data-i18n="home.create.title">Create a new brain</span>
+          <span class="launch-choice-detail" data-i18n="home.create.detail">Set its language, purpose, and AI setup.</span>
         </button>
         <button id="empty-open" class="launch-choice" type="button">
-          <span class="launch-choice-title">Open an existing brain</span>
-          <span class="launch-choice-detail">Read a local folder of Markdown pages as a graph.</span>
+          <span class="launch-choice-title" data-i18n="home.open.title">Open an existing brain</span>
+          <span class="launch-choice-detail" data-i18n="home.open.detail">Read a local folder of Markdown pages as a graph.</span>
         </button>
       </div>
-      <button id="empty-manage" class="launch-utility" type="button">Manage your local brains</button>
+      <div class="launch-utilities">
+        <button id="empty-manage" class="launch-utility" type="button" data-i18n="home.manage">Manage your local brains</button>
+        <button id="empty-settings" class="launch-utility" type="button" data-i18n="home.settings">App settings</button>
+      </div>
       <div id="recent"></div>
     </section>
     <header id="command" class="glass" hidden>
       <div class="vault-cluster">
-        <button id="go-home" class="btn-stamp" type="button" title="Return to Eva's brain library">Home</button>
-        <button id="new-vault-button" class="btn-stamp">New brain</button>
-        <button id="open-vault" class="btn-stamp">Open brain</button>
-        <button id="manage-brains" class="btn-stamp">Manage brains</button>
-        <span id="vault-path">No brain open</span>
+        <button id="go-home" class="btn-stamp" type="button" data-i18n="nav.home" data-i18n-title="aria.home" title="Return to Eva's brain library">Home</button>
+        <button id="new-vault-button" class="btn-stamp" data-i18n="nav.new">New brain</button>
+        <button id="open-vault" class="btn-stamp" data-i18n="nav.open">Open brain</button>
+        <button id="manage-brains" class="btn-stamp" data-i18n="nav.manage">Manage brains</button>
+        <button id="app-settings-button" class="btn-stamp" data-i18n="nav.settings">Settings</button>
+        <span id="vault-path" data-i18n="nav.noBrain">No brain open</span>
       </div>
       <span class="toolbar-rule" aria-hidden="true"></span>
       <nav class="ops" aria-label="Brain operations">
         <button id="op-ingest" class="op" title="Add source documents for the agent to integrate into this brain">
-          Ingest
+          <span data-i18n="op.ingest">Ingest</span>
         </button>
-        <button id="op-query" class="op" title="Ask the current brain a cited question">Query</button>
-        <button id="op-lint" class="op" aria-pressed="false">Health</button>
-        <button id="op-log" class="op" aria-pressed="false">Log</button>
+        <button id="op-query" class="op" title="Ask the current brain a cited question"><span data-i18n="op.query">Query</span></button>
+        <button id="op-lint" class="op" aria-pressed="false" data-i18n="op.health">Health</button>
+        <button id="op-log" class="op" aria-pressed="false" data-i18n="op.log">Log</button>
       </nav>
       <span class="toolbar-rule" aria-hidden="true"></span>
       <button id="reorganize-graph" class="op" type="button" title="Release manual placements and arrange the graph again">
-        Reorganize
+        <span data-i18n="op.reorganize">Reorganize</span>
       </button>
     </header>
     <div id="ingest-status" role="status" aria-live="polite" hidden></div>
     <div id="operation-scrim" aria-hidden="true" hidden></div>
     <aside id="lint-panel" class="glass operation-modal" hidden aria-label="Brain health" role="dialog" aria-modal="true">
-      <button class="panel-close" data-panel="lint" aria-label="Close health check">&#10005;</button>
+      <button class="panel-close" data-panel="lint" data-i18n-aria-label="aria.close" aria-label="Close health check">&#10005;</button>
       <div class="panel-head">
-        <h2>Health</h2>
+        <h2 data-i18n="health.title">Health</h2>
         <p class="panel-sub" id="lint-sub"></p>
       </div>
       <div id="lint-body"></div>
     </aside>
     <aside id="log-panel" class="glass operation-modal" hidden aria-label="Brain log" role="dialog" aria-modal="true">
-      <button class="panel-close" data-panel="log" aria-label="Close log">&#10005;</button>
+      <button class="panel-close" data-panel="log" data-i18n-aria-label="aria.close" aria-label="Close log">&#10005;</button>
       <div class="panel-head">
-        <h2>Log</h2>
+        <h2 data-i18n="log.title">Log</h2>
         <p class="panel-sub" id="log-sub"></p>
       </div>
       <div id="log-body"></div>
     </aside>
     <aside id="detail" class="glass" hidden>
-      <button id="detail-close" class="panel-close" aria-label="Close details">&#10005;</button>
+      <button id="detail-close" class="panel-close" data-i18n-aria-label="aria.close" aria-label="Close details">&#10005;</button>
       <div id="sidebar"></div>
     </aside>
     <aside id="review" class="glass operation-modal" hidden aria-label="Change review" role="dialog" aria-modal="true">
       <div class="panel-head">
-        <h2 id="review-title">Review changes</h2>
+        <h2 id="review-title" data-i18n="review.title">Review changes</h2>
         <p class="panel-sub" id="review-sub"></p>
       </div>
       <div id="review-issues"></div>
       <pre id="review-patch"></pre>
       <div class="review-actions">
-        <button id="review-accept" class="btn-stamp">Accept and merge</button>
-        <button id="review-reject" class="btn-stamp reject">Reject</button>
+        <button id="review-accept" class="btn-stamp" data-i18n="review.accept">Accept and merge</button>
+        <button id="review-reject" class="btn-stamp reject" data-i18n="review.reject">Reject</button>
       </div>
     </aside>
     <aside id="query-panel" class="glass operation-modal" hidden aria-label="Query brain" role="dialog" aria-modal="true">
-      <button id="query-close" class="panel-close" aria-label="Close query">&#10005;</button>
+      <button id="query-close" class="panel-close" data-i18n-aria-label="aria.close" aria-label="Close query">&#10005;</button>
       <div class="panel-head">
-        <p class="form-kicker">Ask the record</p>
-        <h2>Query brain</h2>
-        <p class="form-copy">
-          Eva reads the current brain and returns a cited answer. Asking never
-          changes it; saving creates a reviewable analysis page.
-        </p>
+        <p class="form-kicker" data-i18n="query.kicker">Ask the record</p>
+        <h2 data-i18n="query.title">Query brain</h2>
+        <p class="form-copy" data-i18n="query.copy">Eva reads the current brain and returns a cited answer. Asking never changes it; saving creates a reviewable analysis page.</p>
       </div>
       <form id="query-form">
-        <label class="form-label" for="query-question">Question</label>
-        <textarea id="query-question" class="query-input" rows="4" maxlength="4000" placeholder="What does the evidence suggest about…"></textarea>
+        <label class="form-label" for="query-question" data-i18n="query.question">Question</label>
+        <textarea id="query-question" class="query-input" rows="4" maxlength="4000" data-i18n-placeholder="query.placeholder" placeholder="What does the evidence suggest about…"></textarea>
         <p id="query-error" class="form-error" role="alert" hidden></p>
         <div class="query-actions">
           <span id="query-status" class="query-status" role="status" aria-live="polite" hidden></span>
-          <button id="query-submit" class="btn-stamp" type="submit">Ask brain</button>
+          <button id="query-submit" class="btn-stamp" type="submit" data-i18n="query.ask">Ask brain</button>
         </div>
       </form>
       <section id="query-result" hidden aria-live="polite">
         <div class="query-answer-head">
-          <h3>Answer</h3>
-          <button id="query-save" class="btn-stamp aux" type="button">Save as analysis</button>
+          <h3 data-i18n="query.answer">Answer</h3>
+          <button id="query-save" class="btn-stamp aux" type="button" data-i18n="query.save">Save as analysis</button>
         </div>
         <pre id="query-answer" class="query-answer"></pre>
-        <h3 class="query-evidence-title">Evidence</h3>
+        <h3 class="query-evidence-title" data-i18n="query.evidence">Evidence</h3>
         <div id="query-citations" class="query-citations"></div>
       </section>
     </aside>
     <section id="brain-library" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="brain-library-title">
-      <button id="brain-library-close" class="panel-close" aria-label="Close brain library">&#10005;</button>
+      <button id="brain-library-close" class="panel-close" data-i18n-aria-label="aria.close" aria-label="Close brain library">&#10005;</button>
       <div class="panel-head">
-        <p class="form-kicker">Your library</p>
-        <h2 id="brain-library-title">Your brains</h2>
-        <p class="form-copy">Choose a brain Eva already keeps in Documents/Eva/Brains, or import one from elsewhere.</p>
+        <p class="form-kicker" data-i18n="library.kicker">Your library</p>
+        <h2 id="brain-library-title" data-i18n="library.title">Your brains</h2>
+        <p class="form-copy" data-i18n="library.copy">Choose a brain Eva already keeps in Documents/Eva/Brains, or import one from elsewhere.</p>
       </div>
       <div id="brain-library-body" aria-live="polite"></div>
       <p id="brain-library-error" class="form-error" role="alert" hidden></p>
       <div class="brain-library-actions">
-        <button id="brain-library-manage" class="btn-stamp aux" type="button">Manage brains</button>
-        <button id="brain-library-import" class="btn-stamp aux" type="button">Import a brain</button>
-        <button id="brain-library-new" class="btn-stamp" type="button">New brain</button>
+        <button id="brain-library-manage" class="btn-stamp aux" type="button" data-i18n="library.manage">Manage brains</button>
+        <button id="brain-library-import" class="btn-stamp aux" type="button" data-i18n="library.import">Import a brain</button>
+        <button id="brain-library-new" class="btn-stamp" type="button" data-i18n="library.new">New brain</button>
       </div>
     </section>
     <section id="brain-manager" class="glass operation-modal" hidden role="dialog" aria-modal="true" aria-labelledby="brain-manager-title">
-      <button id="brain-manager-close" class="panel-close" type="button" aria-label="Close brain manager">&#10005;</button>
+      <button id="brain-manager-close" class="panel-close" type="button" data-i18n-aria-label="aria.close" aria-label="Close brain manager">&#10005;</button>
       <div class="panel-head">
-        <p class="form-kicker">Local library</p>
-        <h2 id="brain-manager-title">Brain manager</h2>
-        <p class="form-copy">See where each brain lives and set the profile Eva uses when it works there.</p>
+        <p class="form-kicker" data-i18n="manager.kicker">Local library</p>
+        <h2 id="brain-manager-title" data-i18n="manager.title">Brain manager</h2>
+        <p class="form-copy" data-i18n="manager.copy">See where each brain lives and set the profile Eva uses when it works there.</p>
       </div>
       <div class="brain-manager-layout">
         <section class="brain-manager-shelf" aria-label="Local brains">
-          <p class="brain-manager-section-label">Your brains</p>
+          <p class="brain-manager-section-label" data-i18n="manager.shelf">Your brains</p>
           <div id="brain-manager-list" aria-live="polite"></div>
         </section>
         <form id="brain-manager-form" hidden>
@@ -149,48 +147,57 @@
             <span id="brain-manager-name" class="brain-manager-name"></span>
             <span id="brain-manager-path" class="brain-manager-path"></span>
           </div>
-          <label class="form-label" for="brain-manager-language">Working language</label>
+          <label class="form-label" for="brain-manager-language" data-i18n="manager.language">Working language</label>
           <input id="brain-manager-language" class="text-input compact" type="text" list="vault-languages" maxlength="48" autocomplete="off" />
           <fieldset class="runtime-fieldset brain-manager-runtime">
-            <legend class="form-label">AI runtime</legend>
+            <legend class="form-label" data-i18n="manager.runtime">AI runtime</legend>
             <div class="runtime-choices">
               <label class="runtime-choice">
                 <input name="brain-manager-agent" type="radio" value="codex" />
                 <span class="runtime-choice-name">Codex</span>
-                <span class="runtime-choice-detail">Use the Codex CLI signed in on this Mac.</span>
+                <span class="runtime-choice-detail" data-i18n="manager.codex">Use the Codex CLI signed in on this Mac.</span>
               </label>
               <label class="runtime-choice">
                 <input name="brain-manager-agent" type="radio" value="claude" />
                 <span class="runtime-choice-name">Claude Code</span>
-                <span class="runtime-choice-detail">Use the Claude CLI signed in on this Mac.</span>
+                <span class="runtime-choice-detail" data-i18n="manager.claude">Use the Claude CLI signed in on this Mac.</span>
               </label>
             </div>
           </fieldset>
-          <label class="form-label" for="brain-manager-purpose">What is this brain for? <span class="optional">Optional</span></label>
+          <label class="form-label" for="brain-manager-purpose"><span data-i18n="manager.purpose">What is this brain for?</span> <span class="optional" data-i18n="common.optional">Optional</span></label>
           <textarea id="brain-manager-purpose" class="purpose-input" rows="2" maxlength="240"></textarea>
           <p id="brain-manager-error" class="form-error" role="alert" hidden></p>
           <div class="brain-manager-actions">
             <span id="brain-manager-status" class="brain-manager-status" role="status" aria-live="polite" hidden></span>
-            <button id="brain-manager-save" class="btn-stamp" type="submit">Save changes</button>
+            <button id="brain-manager-save" class="btn-stamp" type="submit" data-i18n="manager.save">Save changes</button>
           </div>
         </form>
       </div>
     </section>
+    <section id="app-settings" class="glass operation-modal" hidden role="dialog" aria-modal="true" aria-labelledby="app-settings-title">
+      <button id="app-settings-close" class="panel-close" type="button" data-i18n-aria-label="aria.close" aria-label="Close">&#10005;</button>
+      <div class="panel-head">
+        <p class="form-kicker" data-i18n="settings.kicker">Eva</p>
+        <h2 id="app-settings-title" data-i18n="settings.title">App settings</h2>
+        <p class="form-copy" data-i18n="settings.copy">Choose the language Eva uses for its interface. This does not change a brain’s working language.</p>
+      </div>
+      <label class="form-label" for="app-language" data-i18n="settings.language">App language</label>
+      <select id="app-language" class="text-input" aria-describedby="app-language-hint"></select>
+      <p id="app-language-hint" class="field-hint" data-i18n="settings.hint">Saved only on this device.</p>
+      <p id="app-settings-status" class="brain-manager-status" role="status" aria-live="polite" hidden></p>
+    </section>
     <section id="new-vault" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="new-vault-title">
       <form id="new-vault-form">
         <div class="panel-head">
-          <p class="form-kicker">First page</p>
-          <h2 id="new-vault-title">New brain</h2>
-          <p class="form-copy">
-            Set the frame for this knowledge project. Eva stores these choices
-            in the local brain schema that your AI reads before it works.
-          </p>
+          <p class="form-kicker" data-i18n="new.kicker">First page</p>
+          <h2 id="new-vault-title" data-i18n="new.title">New brain</h2>
+          <p class="form-copy" data-i18n="new.copy">Set the frame for this knowledge project. Eva stores these choices in the local brain schema that your AI reads before it works.</p>
         </div>
-        <label class="form-label" for="new-vault-name">Brain name</label>
-        <input id="new-vault-name" class="text-input" type="text" maxlength="80" autocomplete="off" placeholder="Research atlas" />
+        <label class="form-label" for="new-vault-name" data-i18n="new.name">Brain name</label>
+        <input id="new-vault-name" class="text-input" type="text" maxlength="80" autocomplete="off" data-i18n-placeholder="new.namePlaceholder" placeholder="Research atlas" />
         <div class="setup-grid">
           <div>
-            <label class="form-label" for="new-vault-language">Working language</label>
+            <label class="form-label" for="new-vault-language" data-i18n="new.language">Working language</label>
             <input id="new-vault-language" class="text-input compact" type="text" list="vault-languages" maxlength="48" autocomplete="off" value="English" />
             <datalist id="vault-languages">
               <option value="English"></option>
@@ -202,31 +209,31 @@
           </div>
         </div>
         <fieldset class="runtime-fieldset">
-          <legend class="form-label">AI runtime</legend>
+          <legend class="form-label" data-i18n="new.runtime">AI runtime</legend>
           <div class="runtime-choices">
             <label class="runtime-choice">
               <input name="new-vault-agent" type="radio" value="codex" checked />
               <span class="runtime-choice-name">Codex</span>
-              <span class="runtime-choice-detail">Use the Codex CLI already signed in on this Mac.</span>
+              <span class="runtime-choice-detail" data-i18n="new.codex">Use the Codex CLI already signed in on this Mac.</span>
             </label>
             <label class="runtime-choice">
               <input name="new-vault-agent" type="radio" value="claude" />
               <span class="runtime-choice-name">Claude Code</span>
-              <span class="runtime-choice-detail">Use the Claude CLI already signed in on this Mac.</span>
+              <span class="runtime-choice-detail" data-i18n="new.claude">Use the Claude CLI already signed in on this Mac.</span>
             </label>
           </div>
-          <p class="field-hint">Eva stores no credentials. The selected runtime is saved with this local brain.</p>
+          <p class="field-hint" data-i18n="new.credentials">Eva stores no credentials. The selected runtime is saved with this local brain.</p>
         </fieldset>
-        <label class="form-label" for="new-vault-purpose">What is this brain for? <span class="optional">Optional</span></label>
-        <textarea id="new-vault-purpose" class="purpose-input" rows="2" maxlength="240" placeholder="Track a research topic, plan a trip, understand a company…"></textarea>
+        <label class="form-label" for="new-vault-purpose"><span data-i18n="new.purpose">What is this brain for?</span> <span class="optional" data-i18n="common.optional">Optional</span></label>
+        <textarea id="new-vault-purpose" class="purpose-input" rows="2" maxlength="240" data-i18n-placeholder="new.purposePlaceholder" placeholder="Track a research topic, plan a trip, understand a company…"></textarea>
         <div class="brain-home">
-          <span class="form-label">Your brains</span>
-          <span class="brain-home-value">Eva creates and keeps them in Documents/Eva/Brains.</span>
+          <span class="form-label" data-i18n="new.directory">Your brains</span>
+          <span class="brain-home-value" data-i18n="new.directoryCopy">Eva creates and keeps them in Documents/Eva/Brains.</span>
         </div>
         <p id="new-vault-error" class="form-error" role="alert" hidden></p>
         <div class="new-vault-actions">
-          <button id="new-vault-cancel" class="btn-stamp reject" type="button">Cancel</button>
-          <button id="new-vault-create" class="btn-stamp" type="submit" disabled>Create brain</button>
+          <button id="new-vault-cancel" class="btn-stamp reject" type="button" data-i18n="new.cancel">Cancel</button>
+          <button id="new-vault-create" class="btn-stamp" type="submit" disabled data-i18n="new.create">Create brain</button>
         </div>
       </form>
     </section>

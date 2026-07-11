@@ -49,6 +49,13 @@ Use **Manage brains** to see each local folder and update its working language,
 AI runtime, or purpose. Eva records a profile change in that brain's local Git
 history; it does not create an account, remote, or cloud copy.
 
+## Interface language
+
+Eva can follow the system language or use a locally saved app-language choice:
+English, Español, Português, Français, Deutsch, Italiano, 日本語, 한국어,
+中文（简体）, and 中文（繁體）. This changes Eva's interface only; each brain keeps
+its own independent working language.
+
 ## Health Check
 
 **Health** combines deterministic structural linting with an optional,

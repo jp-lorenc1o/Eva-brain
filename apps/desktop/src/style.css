@@ -223,9 +223,16 @@ body::after {
   gap: 8px;
 }
 
+.launch-utilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 11px 0 -2px;
+}
+
 .launch-utility {
   display: inline-block;
-  margin: 11px 0 -2px;
+  margin: 0;
   padding: 4px 1px;
   border: 0;
   background: transparent;
@@ -1063,6 +1070,24 @@ body.operation-modal-open #ingest-status {
   border-radius: 50%;
   content: '';
   animation: querywork 850ms linear infinite;
+}
+
+/* App settings is deliberately a small preference sheet. It does not compete
+   with a brain profile: language here belongs to Eva's chrome only. */
+#app-settings {
+  width: min(430px, calc(100vw - 48px));
+}
+
+#app-settings .panel-head h2 {
+  margin-right: 0;
+}
+
+#app-language {
+  margin-bottom: 8px;
+}
+
+#app-settings-status {
+  margin-top: 14px;
 }
 
 #query-panel .panel-head h2 {
