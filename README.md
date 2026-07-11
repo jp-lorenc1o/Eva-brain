@@ -1,4 +1,4 @@
-# Eva-wiki — LLM Wiki
+# Eva — LLM Wiki
 
 Eva is a local-first desktop app for building a personal knowledge base with an
 LLM. Instead of repeatedly retrieving from raw documents at question time, Eva

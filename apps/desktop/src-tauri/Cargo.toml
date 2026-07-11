@@ -1,7 +1,7 @@
 [package]
 name = "eva-wiki-desktop"
 version = "0.1.0"
-description = "eva-wiki desktop app"
+description = "Eva desktop app"
 edition = "2021"
 
 [build-dependencies]

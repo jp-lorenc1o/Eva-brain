@@ -22,5 +22,5 @@ fn main() {
             ingest::query_decide
         ])
         .run(tauri::generate_context!())
-        .expect("error while running eva-wiki");
+        .expect("error while running Eva");
 }
