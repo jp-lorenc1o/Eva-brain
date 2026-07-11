@@ -364,8 +364,8 @@ body::after {
   gap: 4px;
 }
 
-.vault-cluster .btn-stamp:not(.aux) {
-  flex: 1 1 0;
+.vault-cluster .btn-stamp {
+  flex: 0 0 auto;
   text-align: center;
 }
 

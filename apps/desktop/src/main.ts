@@ -1910,13 +1910,9 @@ void listen('ingest:rejected', async (event) => {
 
 /* Wiring -------------------------------------------------------------------- */
 document.getElementById('go-home')!.addEventListener('click', goHome);
-document.getElementById('open-vault')!.addEventListener('click', showBrainLibrary);
 document.getElementById('empty-open')!.addEventListener('click', showBrainLibrary);
-document.getElementById('new-vault-button')!.addEventListener('click', showNewVault);
 document.getElementById('empty-new')!.addEventListener('click', showNewVault);
-document.getElementById('manage-brains')!.addEventListener('click', showBrainManager);
 document.getElementById('empty-manage')!.addEventListener('click', showBrainManager);
-document.getElementById('app-settings-button')!.addEventListener('click', showAppSettings);
 document.getElementById('empty-settings')!.addEventListener('click', showAppSettings);
 document.getElementById('brain-library-close')!.addEventListener('click', closeBrainLibrary);
 brainLibraryImportEl.addEventListener('click', () => void importBrain());
