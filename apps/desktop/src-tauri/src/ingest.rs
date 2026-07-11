@@ -11,7 +11,10 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const EVA_MD: &str = include_str!("../../../../schema/EVA.md");
+const AGENTS_MD: &str = include_str!("../../../../schema/AGENTS.md");
 const CLAUDE_MD: &str = include_str!("../../../../schema/CLAUDE.md");
+const INDEX_MD: &str = include_str!("../../../../templates/vault/index.md");
+const LOG_MD: &str = include_str!("../../../../templates/vault/log.md");
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,11 +202,11 @@ fn drive_agent(app: &AppHandle, job: &Job, worktree: &Path) -> Result<String, St
     let prompt = format!(
         r#"You are ingesting a source document into an Eva wiki vault (your current directory).
 
-1. Read EVA.md at the vault root first — it defines page types, directories, frontmatter, and the merge-over-duplicate policy. Follow it exactly.
+1. Read EVA.md at the vault root first — it defines page types, provenance, directories, linking, and the merge-over-duplicate policy. Follow it exactly.
 2. Read the source document at raw/{source}.
 3. Before creating any page, use the eva MCP tools (search, read_page, neighbors) to find existing pages about the same entities and concepts. Prefer merging new information into existing pages; create a new page only for a distinct entity or concept worth linking to from elsewhere.
-4. Write the knowledge from the source into the wiki: create or update pages with [[wiki-links]], required frontmatter (title, type), and keep every page reachable from index.md (create index.md if the vault is empty). Never duplicate an existing page.
-5. Do not modify raw/, EVA.md, CLAUDE.md, or log.md. Do not use git.
+4. Write the knowledge from the source into the wiki: create or update pages with [[wiki-links]], required frontmatter (title, type), source provenance, and keep every page reachable from index.md. Summaries must name their raw source. Never duplicate an existing page.
+5. Do not modify raw/, EVA.md, AGENTS.md, CLAUDE.md, or log.md. Do not use git.
 
 When you are done, reply with a one-paragraph summary of what you created and updated."#,
         source = job.source_name
@@ -308,6 +311,11 @@ When you are done, reply with a one-paragraph summary of what you created and up
 
 fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
     let vault = PathBuf::from(&job.vault);
+    // Capture the exact commit the worktree starts from. A vault is not
+    // required to name its default branch `main`; comparison against this
+    // commit makes the review gate portable to any Git branch convention.
+    let base_commit = git(&vault, &["rev-parse", "HEAD"])?;
+    let base_commit = base_commit.trim().to_string();
     let slug: String = job
         .source_name
         .chars()
@@ -357,7 +365,7 @@ fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
 
     // The gate: any deletion, or any new lint issue, holds the branch for
     // human review. Deletions are never auto-merged under any circumstance.
-    let name_status = git(&vault, &["diff", "--name-status", "main", &branch])?;
+    let name_status = git(&vault, &["diff", "--name-status", &base_commit, &branch])?;
     let deletions: Vec<String> = name_status
         .lines()
         .filter(|l| l.starts_with('D'))
@@ -385,7 +393,7 @@ fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
         cleanup(&vault, &branch, &worktree);
         Ok(RunOutcome::Merged { summary, pages })
     } else {
-        let patch = git(&vault, &["diff", "main", &branch])?;
+        let patch = git(&vault, &["diff", &base_commit, &branch])?;
         Ok(RunOutcome::Held {
             branch,
             worktree,
@@ -480,15 +488,33 @@ pub fn ensure_schema(vault: String) -> Result<bool, String> {
         Ok(r) => r,
         Err(_) => return Ok(false), // not an agent-managed vault: leave untouched
     };
-    if root.join("EVA.md").exists() {
-        return Ok(false);
+    let mut staged: Vec<&str> = vec!["add"];
+    if !root.join("EVA.md").exists() {
+        fs::write(root.join("EVA.md"), EVA_MD).map_err(|e| e.to_string())?;
+        staged.push("EVA.md");
     }
-    fs::write(root.join("EVA.md"), EVA_MD).map_err(|e| e.to_string())?;
+    if !root.join("AGENTS.md").exists() {
+        fs::write(root.join("AGENTS.md"), AGENTS_MD).map_err(|e| e.to_string())?;
+        staged.push("AGENTS.md");
+    }
     if !root.join("CLAUDE.md").exists() {
         fs::write(root.join("CLAUDE.md"), CLAUDE_MD).map_err(|e| e.to_string())?;
+        staged.push("CLAUDE.md");
     }
-    git(&root, &["add", "EVA.md", "CLAUDE.md"])?;
-    git(&root, &["commit", "-m", "schema: seed EVA.md and CLAUDE.md"])?;
+    if !root.join("index.md").exists() {
+        fs::write(root.join("index.md"), INDEX_MD).map_err(|e| e.to_string())?;
+        staged.push("index.md");
+    }
+    if !root.join("log.md").exists() {
+        fs::write(root.join("log.md"), LOG_MD).map_err(|e| e.to_string())?;
+        staged.push("log.md");
+    }
+    fs::create_dir_all(root.join("raw")).map_err(|e| e.to_string())?;
+    if staged.len() == 1 {
+        return Ok(false);
+    }
+    git(&root, &staged)?;
+    git(&root, &["commit", "-m", "schema: bootstrap Eva vault"])?;
     Ok(true)
 }
 
@@ -542,7 +568,7 @@ pub fn ingest_enqueue(
     // ingest in the order their knowledge compounds.
     names.sort();
 
-    let mut st = state.lock().unwrap();
+    let st = state.lock().unwrap();
     // Never queue the same source twice at once.
     let already: Vec<String> = st
         .queue

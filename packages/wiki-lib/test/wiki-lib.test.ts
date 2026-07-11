@@ -120,4 +120,24 @@ describe('test-vault', () => {
     expect(rules).toContain('broken-link');
     expect(lintPage(vault, 'concepts/wiki')).toEqual([]);
   });
+
+  it('requires explicit titles and source provenance for summaries', () => {
+    const contractVault = buildVault([
+      { path: 'index.md', content: '---\ntitle: Home\ntype: index\n---\n\nSee [[digest]].' },
+      { path: 'digest.md', content: '---\ntype: summary\n---\n\nA source digest.' },
+    ]);
+    const rules = lintPage(contractVault, 'digest').map((issue) => issue.rule).sort();
+    expect(rules).toEqual(['missing-source', 'missing-title']);
+  });
+
+  it('requires summary provenance to point into raw/', () => {
+    const contractVault = buildVault([
+      { path: 'index.md', content: '---\ntitle: Home\ntype: index\n---\n\nSee [[digest]].' },
+      {
+        path: 'digest.md',
+        content: '---\ntitle: Digest\ntype: summary\nsource: elsewhere/article.md\n---\n\nA source digest.',
+      },
+    ]);
+    expect(lintPage(contractVault, 'digest').map((issue) => issue.rule)).toEqual(['invalid-source']);
+  });
 });

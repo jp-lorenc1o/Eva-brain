@@ -1,72 +1,109 @@
-# EVA vault schema
+# Eva vault schema
 
-This vault is maintained by both humans and agents. Every change must follow
-this schema. Read this whole file before writing anything.
+This document is the source of truth for an Eva vault. Humans and agents
+maintain the vault together; agents must read this file before making a
+change. The purpose of the vault is to turn immutable source material into a
+durable, interlinked body of knowledge — not to act as a chat transcript or a
+temporary retrieval index.
+
+## The three layers
+
+- `raw/` contains the original source documents. It is immutable: agents may
+  read it but must never edit, move, or delete anything in it.
+- The wiki is the generated Markdown outside `raw/`. Agents create and update
+  this layer as new sources and questions add knowledge.
+- This schema defines the operating rules. `EVA.md`, `AGENTS.md`,
+  `CLAUDE.md`, and `log.md` are infrastructure, not wiki pages.
+
+## Standard layout
+
+```text
+raw/                 original source documents
+entities/            durable pages about people, organizations, places, things
+concepts/            durable pages about ideas, mechanisms, themes
+summaries/           one source digest per raw document
+analyses/            saved comparisons, syntheses, and useful query answers
+index.md             content-oriented catalog and starting point
+log.md               append-only operational history
+EVA.md               this contract
+AGENTS.md            agent-neutral instruction entry point
+CLAUDE.md            Claude compatibility entry point
+```
+
+Use lowercase kebab-case filenames. A page lives in the directory that matches
+its type. `index.md` stays at the vault root. A domain may extend this layout,
+but the extension and its purpose must be recorded in this file before agents
+use it.
 
 ## Page types
 
-Every page declares a `type` in frontmatter. Exactly one of:
+| type | purpose | directory |
+| --- | --- | --- |
+| `entity` | A distinct person, organization, place, project, or thing. | `entities/` |
+| `concept` | An idea, mechanism, topic, or recurring theme. | `concepts/` |
+| `summary` | A digest of exactly one source document. | `summaries/` |
+| `analysis` | A synthesis, comparison, answer, or other reusable derived work. | `analyses/` |
+| `index` | A hub page that helps people and agents navigate the vault. | vault root |
+| `log` | Reserved for the operation log; never use it for a normal page. | vault root |
 
-| type      | what it is                                                            | lives in      |
-|-----------|-----------------------------------------------------------------------|---------------|
-| `entity`  | a distinct person, organization, place, or thing (Warren Buffett)     | `entities/`   |
-| `concept` | an idea, mechanism, or recurring theme (float, moat, mark-to-market)  | `concepts/`   |
-| `summary` | a digest of one source document (one shareholder letter, one paper)   | `summaries/`  |
-| `index`   | a hub page whose job is linking other pages                           | vault root    |
-| `log`     | reserved for the operation log; agents never create pages of this type | —            |
+Choose the smallest durable subject that other pages could plausibly link to.
+Do not create a new page for a fact that belongs on an existing page. Search
+first, then merge rather than duplicate.
 
-## Directory conventions
+## Frontmatter and provenance
 
-- `entities/`, `concepts/`, `summaries/` as above; `index.md` at the vault root.
-- Filenames: lowercase kebab-case of the title (`warren-buffett.md`).
-- `raw/` holds source documents. Never edit, move, or delete anything in it.
-- `EVA.md`, `CLAUDE.md`, and `log.md` are infrastructure, not wiki pages.
-  Never edit them.
-
-## Frontmatter
-
-Required on every page:
+Every wiki page requires a title and type:
 
 ```markdown
 ---
-title: Warren Buffett
-type: entity
+title: Example concept
+type: concept
+updated: 2026-07-11
 ---
 ```
 
-Optional: `aliases` (comma-separated alternate names), `source` (the raw/
-document that introduced the page), `updated` (ISO date of last substantive
-edit).
+`updated` is strongly recommended after a substantive change. Optional fields:
 
-## New page vs. edit in place — the core heuristic
+- `aliases`: comma-separated alternate names for link resolution and search.
+- `source`: the exact `raw/` path summarized by a `summary` page. This is
+  required for every `summary`.
+- `sources`: comma-separated `raw/` paths or summary page ids supporting an
+  entity, concept, or analysis. Use it whenever a page contains source-derived
+  claims.
 
-**Create a new page** only when the subject is a distinct entity or concept
-that other pages would plausibly link to on its own: a person, a company, a
-named mechanism, a recurring theme.
+Keep provenance close to knowledge. A summary must identify its raw document;
+an analysis must identify the pages or sources it synthesizes. Never claim a
+source says something it does not say, and mark unresolved conflicts instead
+of silently choosing a side.
 
-**Edit an existing page** when the information is an attribute of, or an
-update to, something that already has a page: a year's results belong on the
-company's page (or that year's summary), not on a new page; a refinement of a
-concept belongs on the concept's page.
+## Linking and index rules
 
-**MERGE, never duplicate.** Before creating any page, search for existing
-pages covering the same subject (including aliases: "Buffett" and "Warren E.
-Buffett" are one page). If one exists, merge the new information into it —
-integrate, reconcile, and where facts change over time, keep the page current
-and note the evolution with dates. A vault with two pages about the same thing
-is worse than a vault missing a page.
+- Use `[[wiki-links]]`; a target is a filename stem, vault-relative page id,
+  or page title.
+- Only link to pages that already exist or are created in the same change.
+- Every non-index page must have an inbound link. Add new durable pages to
+  `index.md` or link them from an existing reachable page.
+- Keep `index.md` content-oriented: group links by type or topic and include a
+  short description. Update it whenever the vault gains a durable page.
 
-## Linking
+## Operations
 
-- Connect pages with `[[wiki-links]]` (double brackets, target = filename stem
-  or title).
-- Every new page must be reachable: link it from `index.md` or from another
-  page that is. Orphan pages are lint errors.
-- Only link targets that exist or that you are creating in the same change.
-  Broken links are lint errors.
+**Ingest:** read a source in `raw/`, search the existing wiki, create or update
+the necessary pages, preserve provenance, update the index, and let Eva append
+the operation log entry. Do not edit source files or infrastructure files.
 
-## Writing style
+**Query:** search and read the wiki before answering. Cite the supporting page
+ids and source paths. Save an answer as an `analysis` page only when it will be
+useful later; otherwise leave the wiki unchanged.
 
-Concise and declarative. Pages state what is known, with enough context to
-stand alone. Update in place: when a fact changes across sources, revise the
-statement and date the change rather than appending contradictions.
+**Lint:** check broken links, orphan pages, missing frontmatter, summaries
+without a source, stale or conflicting claims, missing links, and important
+concepts that lack durable pages. Structural issues are release blockers;
+semantic suggestions should be reported for human review.
+
+## Safety and versioning
+
+The vault is a Git repository. Eva performs agent work in an isolated worktree
+and records every ingest in `log.md`. New lint issues and deletions require
+human review before merging. Keep any vault containing personal, proprietary,
+or sensitive raw sources in a private repository.

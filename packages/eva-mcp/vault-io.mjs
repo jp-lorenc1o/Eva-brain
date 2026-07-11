@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildVault } from 'wiki-lib';
 
-const INFRA = new Set(['eva.md', 'claude.md', 'log.md']);
+const INFRA = new Set(['eva.md', 'agents.md', 'claude.md', 'log.md']);
 
 export function loadVault(root) {
   const files = readdirSync(root, { recursive: true })

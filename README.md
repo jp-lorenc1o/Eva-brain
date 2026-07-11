@@ -1,13 +1,22 @@
-# eva-wiki
+# Eva — LLM Wiki
 
-Desktop app for exploring a markdown wiki vault as an interactive graph.
+Eva is a local-first desktop app for building a personal knowledge base with an
+LLM. Instead of repeatedly retrieving from raw documents at question time, Eva
+helps an agent maintain a durable, linked Markdown wiki between the sources
+and the user.
 
-- `packages/wiki-lib` — pure TypeScript library: frontmatter/wiki-link parsing,
-  graph building, and vault linting (orphans, broken links, missing metadata).
-  Includes `test-vault/`, a 16-page fixture vault.
-- `apps/desktop` — Tauri v2 + Vite app. "Open vault" picks a folder, the graph
-  renders every page as a node colored by frontmatter `type`, and clicking a
-  node shows its body and lint issues in the sidebar.
+The V1 on-disk and operational contract lives in
+[`docs/V1_VAULT_CONTRACT.md`](docs/V1_VAULT_CONTRACT.md). It keeps sources,
+wiki pages, agent instructions, and Git history portable across tools.
+
+- `packages/wiki-lib` — pure TypeScript frontmatter/wiki-link parsing, graph
+  building, and deterministic structural linting. Includes a 16-page fixture.
+- `packages/eva-mcp` — read-only MCP navigation tools for an agent: search,
+  page reads, neighbors, and shortest paths.
+- `apps/desktop` — Tauri v2 + Vite graph explorer plus a Claude CLI-backed,
+  worktree-isolated ingest and review flow.
+- `schema/` and `templates/vault/` — the generic V1 vault contract and the
+  starter infrastructure seeded into an Eva-managed vault.
 
 ## Setup
 
@@ -16,6 +25,12 @@ npm install          # installs workspaces, builds wiki-lib via its prepare scri
 npm test             # wiki-lib unit tests (vitest)
 npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ```
+
+## Privacy
+
+Eva copies selected source files into a vault's `raw/` directory and commits
+them there as source of truth. Use a private Git remote for any vault that
+contains personal, proprietary, client, or copyrighted source material.
 
 Dev-only hooks (used for automated verification, no effect in production
 builds): set `VITE_DEV_VAULT=/abs/path/to/vault` to auto-open a vault on

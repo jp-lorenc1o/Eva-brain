@@ -33,10 +33,11 @@ const TYPE_COLORS: Record<string, string> = {
   note: '#7c5b78',
   entity: '#5c7150',
   summary: '#8c6a4f',
+  analysis: '#7c5b78',
   log: '#8b887a',
 };
 const FALLBACK_COLOR = '#a6a294';
-const TYPE_ORDER = ['index', 'entity', 'concept', 'summary', 'person', 'project', 'note', 'log'];
+const TYPE_ORDER = ['index', 'entity', 'concept', 'summary', 'analysis', 'person', 'project', 'note', 'log'];
 
 const colorFor = (type: string | null): string =>
   (type !== null && TYPE_COLORS[type]) || FALLBACK_COLOR;
@@ -83,7 +84,7 @@ const reviewPatchEl = document.getElementById('review-patch') as HTMLElement;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const AMBIENT_ALPHA = 0.012;
 const PANEL_MARGIN = 28;
-const INFRA_FILES = new Set(['log.md', 'eva.md', 'claude.md']);
+const INFRA_FILES = new Set(['log.md', 'eva.md', 'agents.md', 'claude.md']);
 
 let vault: Vault | null = null;
 let issues: LintIssue[] = [];
@@ -312,8 +313,8 @@ async function chooseVault(): Promise<void> {
 
 async function openVault(root: string): Promise<void> {
   currentVault = root;
-  // Seed EVA.md/CLAUDE.md into agent-managed vaults (their own git root);
-  // read-only viewing of other folders is left untouched.
+  // Bootstrap the standard Eva infrastructure into agent-managed vaults (their
+  // own git root); read-only viewing of other folders is left untouched.
   void invoke('ensure_schema', { vault: root }).catch(() => {});
   const rootEntries = await readDir(root);
   const logName = rootEntries.find((e) => e.isFile && e.name.toLowerCase() === 'log.md')?.name;
