@@ -90,6 +90,13 @@ The profile's listed modules are maintenance priorities for the agent. They do
 not replace the canonical page types, and no agent should create a category
 that the human has not found useful.
 
+When ingesting, apply the active Brain profile as an extraction lens as well
+as the general source, provenance, linking, and merge rules above. When doing
+maintenance, check the profile's modules for missing connections, unsupported
+claims, stale status, or useful unanswered questions. The profile is not a
+license to infer facts: preserve uncertainty, distinguish a source's claims
+from Eva's synthesis, and keep each durable claim close to its evidence.
+
 New vaults also record their working language, selected agent runtime, and
 optional purpose at the end of this document. Treat these settings as
 instructions: write pages in the working language unless the human asks

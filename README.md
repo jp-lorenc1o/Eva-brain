@@ -51,6 +51,19 @@ working language, AI runtime, or purpose. Eva records a profile change in that
 brain's local Git history; it does not create an account, remote, or cloud
 copy.
 
+## Profile-aware work
+
+Profiles change how Eva reads and maintains a brain. A research brain extracts
+claims, evidence, and contradictions; a reading brain maintains chapters,
+characters, and threads; a course brain tracks concepts, practice gaps, and
+revision. Health checks use the same lens.
+
+The **Tools** button appears for profiles with focused local work. Results are
+always based on the open brain, cite their supporting pages, and must be saved
+through Eva's normal review flow. Course brains include **Flashcards** and a
+**Practice exam** with an answer key; no API keys, account, or cloud upload is
+needed.
+
 ## Interface language
 
 Eva can follow the system language or use a locally saved app-language choice:

@@ -43,6 +43,7 @@
           <span data-i18n="op.ingest">Ingest</span>
         </button>
         <button id="op-query" class="op" title="Ask the current brain a cited question"><span data-i18n="op.query">Query</span></button>
+        <button id="op-profile-tools" class="op" type="button" title="Run tools tailored to this brain's profile" hidden>Tools</button>
         <button id="op-lint" class="op" aria-pressed="false" data-i18n="op.health">Health</button>
         <button id="op-log" class="op" aria-pressed="false" data-i18n="op.log">Log</button>
       </nav>
@@ -109,6 +110,26 @@
         <pre id="query-answer" class="query-answer"></pre>
         <h3 class="query-evidence-title" data-i18n="query.evidence">Evidence</h3>
         <div id="query-citations" class="query-citations"></div>
+      </section>
+    </aside>
+    <aside id="profile-tools" class="glass operation-modal" hidden aria-label="Brain tools" role="dialog" aria-modal="true" aria-labelledby="profile-tools-title">
+      <button id="profile-tools-close" class="panel-close" type="button" aria-label="Close">&#10005;</button>
+      <div class="panel-head">
+        <p id="profile-tools-kicker" class="form-kicker">Brain tools</p>
+        <h2 id="profile-tools-title">Useful work</h2>
+        <p id="profile-tools-copy" class="form-copy"></p>
+      </div>
+      <div id="profile-tools-list" class="profile-tool-list"></div>
+      <p id="profile-tools-error" class="form-error" role="alert" hidden></p>
+      <p id="profile-tools-status" class="query-status" role="status" aria-live="polite" hidden></p>
+      <section id="profile-tools-result" class="profile-tool-result" hidden aria-live="polite">
+        <div class="query-answer-head">
+          <h3 id="profile-tools-result-title">Result</h3>
+          <button id="profile-tools-save" class="btn-stamp aux" type="button">Save as analysis</button>
+        </div>
+        <pre id="profile-tools-content" class="query-answer"></pre>
+        <h3 class="query-evidence-title">Evidence</h3>
+        <div id="profile-tools-citations" class="query-citations"></div>
       </section>
     </aside>
     <section id="brain-library" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="brain-library-title">

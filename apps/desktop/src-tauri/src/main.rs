@@ -22,6 +22,7 @@ fn main() {
             ingest::brain_settings_update,
             ingest::query_run,
             ingest::health_check_run,
+            ingest::profile_tool_run,
             ingest::query_save,
             ingest::query_decide
         ])

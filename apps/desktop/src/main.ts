@@ -56,6 +56,7 @@ const BRAIN_PROFILES = [
     label: 'Personal',
     detail: 'Goals, observations, reflections, and a private timeline.',
     modules: ['goals', 'observations', 'journal', 'timeline'],
+    tools: [{ id: 'personal-review', label: 'Reflection', detail: 'Trace patterns, movement, and questions across the record.' }],
     purposeLabel: 'What would you like to track?',
     purposePlaceholder: 'Goals, habits, health observations, or a question you want to understand…',
   },
@@ -64,6 +65,7 @@ const BRAIN_PROFILES = [
     label: 'Research',
     detail: 'A thesis, evidence, contradictions, and open questions.',
     modules: ['thesis', 'evidence', 'contradictions', 'bibliography'],
+    tools: [{ id: 'evidence-map', label: 'Evidence map', detail: 'Lay out claims, support, challenges, and the next question.' }],
     purposeLabel: 'What question are you investigating?',
     purposePlaceholder: 'The topic, question, or thesis you want this brain to develop…',
   },
@@ -72,6 +74,7 @@ const BRAIN_PROFILES = [
     label: 'Reading companion',
     detail: 'Chapters, characters, plot threads, themes, and chronology.',
     modules: ['chapters', 'characters', 'threads', 'themes'],
+    tools: [{ id: 'reading-threads', label: 'Threads map', detail: 'Connect characters, events, and themes without inventing later material.' }],
     purposeLabel: 'Which book or text are you following?',
     purposePlaceholder: 'Title, author, and any spoiler boundary you want Eva to respect…',
   },
@@ -80,6 +83,7 @@ const BRAIN_PROFILES = [
     label: 'Business record',
     detail: 'Projects, decisions, meetings, risks, and local operating context.',
     modules: ['projects', 'decisions', 'meetings', 'risks'],
+    tools: [{ id: 'decision-brief', label: 'Decision brief', detail: 'Bring together options, owners, evidence, risks, and open questions.' }],
     purposeLabel: 'What business context should this brain maintain?',
     purposePlaceholder: 'A team, company, customer area, project, or decision space…',
   },
@@ -88,6 +92,7 @@ const BRAIN_PROFILES = [
     label: 'Planning',
     detail: 'Objectives, constraints, options, decisions, and a living plan.',
     modules: ['objectives', 'constraints', 'options', 'timeline'],
+    tools: [{ id: 'options-review', label: 'Options review', detail: 'Compare live choices against objectives, constraints, and trade-offs.' }],
     purposeLabel: 'What are you planning?',
     purposePlaceholder: 'A trip, project, purchase, move, or other decision you are working through…',
   },
@@ -96,6 +101,10 @@ const BRAIN_PROFILES = [
     label: 'Course and learning',
     detail: 'Concepts, materials, practice gaps, and revision prompts.',
     modules: ['concepts', 'materials', 'practice', 'revision'],
+    tools: [
+      { id: 'flashcards', label: 'Flashcards', detail: 'Create active-recall cards from the material already in this brain.' },
+      { id: 'practice-exam', label: 'Practice exam', detail: 'Build a mixed exam with an evidence-grounded answer key.' },
+    ],
     purposeLabel: 'What are you learning?',
     purposePlaceholder: 'The course, subject, skill, or syllabus you want to master…',
   },
@@ -104,12 +113,14 @@ const BRAIN_PROFILES = [
     label: 'Blank / custom',
     detail: 'A clean Eva standard with only the structure you choose to add.',
     modules: ['knowledge-base'],
+    tools: [],
     purposeLabel: 'What is this brain for?',
     purposePlaceholder: 'Track a research topic, plan a trip, understand a company…',
   },
 ] as const;
 
 type BrainProfileId = (typeof BRAIN_PROFILES)[number]['id'];
+type ProfileToolId = (typeof BRAIN_PROFILES)[number]['tools'][number]['id'];
 
 function profileDefinition(id: string): (typeof BRAIN_PROFILES)[number] {
   return BRAIN_PROFILES.find((profile) => profile.id === id) ?? BRAIN_PROFILES.at(-1)!;
@@ -149,6 +160,7 @@ const logSubEl = document.getElementById('log-sub') as HTMLElement;
 const logBodyEl = document.getElementById('log-body') as HTMLElement;
 const opIngestEl = document.getElementById('op-ingest') as HTMLButtonElement;
 const opQueryEl = document.getElementById('op-query') as HTMLButtonElement;
+const opProfileToolsEl = document.getElementById('op-profile-tools') as HTMLButtonElement;
 const opLintEl = document.getElementById('op-lint') as HTMLButtonElement;
 const opLogEl = document.getElementById('op-log') as HTMLButtonElement;
 const reorganizeGraphEl = document.getElementById('reorganize-graph') as HTMLButtonElement;
@@ -168,6 +180,17 @@ const queryResultEl = document.getElementById('query-result') as HTMLElement;
 const queryAnswerEl = document.getElementById('query-answer') as HTMLElement;
 const queryCitationsEl = document.getElementById('query-citations') as HTMLElement;
 const querySaveEl = document.getElementById('query-save') as HTMLButtonElement;
+const profileToolsEl = document.getElementById('profile-tools') as HTMLElement;
+const profileToolsKickerEl = document.getElementById('profile-tools-kicker') as HTMLElement;
+const profileToolsCopyEl = document.getElementById('profile-tools-copy') as HTMLElement;
+const profileToolsListEl = document.getElementById('profile-tools-list') as HTMLElement;
+const profileToolsErrorEl = document.getElementById('profile-tools-error') as HTMLElement;
+const profileToolsStatusEl = document.getElementById('profile-tools-status') as HTMLElement;
+const profileToolsResultEl = document.getElementById('profile-tools-result') as HTMLElement;
+const profileToolsResultTitleEl = document.getElementById('profile-tools-result-title') as HTMLElement;
+const profileToolsContentEl = document.getElementById('profile-tools-content') as HTMLElement;
+const profileToolsCitationsEl = document.getElementById('profile-tools-citations') as HTMLElement;
+const profileToolsSaveEl = document.getElementById('profile-tools-save') as HTMLButtonElement;
 const brainLibraryEl = document.getElementById('brain-library') as HTMLElement;
 const brainLibraryBodyEl = document.getElementById('brain-library-body') as HTMLElement;
 const brainLibraryErrorEl = document.getElementById('brain-library-error') as HTMLElement;
@@ -223,6 +246,9 @@ let homeCenterY = forceY<SimNode>(0).strength(0);
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
+let currentBrainSettings: BrainSettings | null = null;
+let latestProfileTool: { tool: ProfileToolId; title: string; answer: QueryAnswer } | null = null;
+let profileToolRunning = false;
 let healthReport: HealthReport | null = null;
 let healthError: string | null = null;
 let healthCheckRunning = false;
@@ -828,6 +854,7 @@ function showBrainManager(): void {
   closeBrainLibrary();
   if (!newVaultEl.hidden) closeNewVault();
   if (!queryPanelEl.hidden) closeQuery();
+  if (!profileToolsEl.hidden) closeProfileTools();
   closeSidePanels();
   brainManagerEl.hidden = false;
   brainManagerBrains = [];
@@ -864,6 +891,10 @@ async function saveBrainManagerSettings(): Promise<void> {
       agent,
       purpose: brainManagerPurposeEl.value.trim(),
     });
+    if (currentVault === settings.path) {
+      currentBrainSettings = brainManagerSettings;
+      updateProfileToolsAvailability();
+    }
     setBrainManagerStatus('Saved to this brain', false);
   } catch (error) {
     setBrainManagerError(String(error));
@@ -884,6 +915,7 @@ function showAppSettings(): void {
   closeBrainLibrary();
   if (!newVaultEl.hidden) closeNewVault();
   if (!queryPanelEl.hidden) closeQuery();
+  if (!profileToolsEl.hidden) closeProfileTools();
   if (!brainManagerEl.hidden) closeBrainManager();
   closeSidePanels();
   appSettingsEl.hidden = false;
@@ -989,12 +1021,18 @@ async function createNewVault(): Promise<void> {
 
 async function openVault(root: string): Promise<void> {
   currentVault = root;
+  currentBrainSettings = null;
+  updateProfileToolsAvailability();
   healthReport = null;
   healthError = null;
   healthCheckRunning = false;
   // Bootstrap the standard Eva infrastructure into agent-managed vaults (their
   // own git root); read-only viewing of other folders is left untouched.
   await invoke('ensure_schema', { vault: root }).catch(() => false);
+  const settings = await invoke<BrainSettings>('brain_settings_get', { vault: root }).catch(() => null);
+  if (currentVault !== root) return;
+  currentBrainSettings = settings;
+  updateProfileToolsAvailability();
   const rootEntries = await readDir(root);
   const logName = rootEntries.find((e) => e.isFile && e.name.toLowerCase() === 'log.md')?.name;
   logRaw = logName ? await readTextFile(`${root}/${logName}`) : null;
@@ -1318,6 +1356,7 @@ function goHome(): void {
     return;
   }
   if (!queryPanelEl.hidden) closeQuery();
+  if (!profileToolsEl.hidden) closeProfileTools();
   closeSidePanels();
   deselect();
 
@@ -1333,6 +1372,8 @@ function goHome(): void {
   issues = [];
   logRaw = null;
   currentVault = null;
+  currentBrainSettings = null;
+  updateProfileToolsAvailability();
   healthReport = null;
   healthError = null;
   healthCheckRunning = false;
@@ -1355,7 +1396,7 @@ function syncOpButtons(): void {
 }
 
 function operationModalIsOpen(): boolean {
-  return !queryPanelEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden || !appSettingsEl.hidden;
+  return !queryPanelEl.hidden || !profileToolsEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden || !appSettingsEl.hidden;
 }
 
 function syncOperationModal(): void {
@@ -1380,6 +1421,7 @@ function toggleSidePanel(which: 'lint' | 'log'): void {
   target.hidden = !opening;
   if (opening) {
     if (!queryPanelEl.hidden) closeQuery();
+    if (!profileToolsEl.hidden) closeProfileTools();
     if (which === 'lint') renderLintPanel();
     else renderLogPanel();
     window.setTimeout(() => target.querySelector<HTMLButtonElement>('.panel-close')?.focus(), 0);
@@ -1739,6 +1781,7 @@ function closeQuery(): void {
 
 function showQuery(): void {
   if (!currentVault) return;
+  if (!profileToolsEl.hidden) closeProfileTools();
   closeSidePanels();
   queryPanelEl.hidden = false;
   queryQuestionEl.value = '';
@@ -1783,6 +1826,173 @@ function renderQueryAnswer(answer: QueryAnswer): void {
   }
   queryResultEl.hidden = false;
   updateExclusions();
+}
+
+interface ProfileToolResult {
+  title: string;
+  content: string;
+  citations: QueryCitation[];
+}
+
+function openProfileDefinition() {
+  return profileDefinition(currentBrainSettings?.profile ?? 'blank');
+}
+
+function updateProfileToolsAvailability(): void {
+  const profile = openProfileDefinition();
+  const available = profile.tools.length > 0;
+  opProfileToolsEl.hidden = !available;
+  opProfileToolsEl.title = available ? `Run tools for this ${profile.label.toLowerCase()} brain` : '';
+}
+
+function setProfileToolsError(message: string | null): void {
+  profileToolsErrorEl.hidden = !message;
+  profileToolsErrorEl.textContent = message ?? '';
+}
+
+function setProfileToolRunning(running: boolean, label = 'Eva is reading the brain and tracing sources…'): void {
+  profileToolRunning = running;
+  profileToolsEl.classList.toggle('is-processing', running);
+  profileToolsStatusEl.hidden = !running;
+  profileToolsStatusEl.textContent = running ? label : '';
+  profileToolsListEl.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+    button.disabled = running;
+  });
+  opProfileToolsEl.classList.toggle('active', running);
+}
+
+function renderProfileTools(): void {
+  const profile = openProfileDefinition();
+  profileToolsKickerEl.textContent = profile.label;
+  profileToolsCopyEl.textContent = `${profile.detail} Choose a focused piece of work; Eva uses only this brain and returns cited material you can save for review.`;
+  profileToolsListEl.innerHTML = '';
+  for (const tool of profile.tools) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'profile-tool';
+    const title = document.createElement('span');
+    title.className = 'profile-tool-title';
+    title.textContent = tool.label;
+    const detail = document.createElement('span');
+    detail.className = 'profile-tool-detail';
+    detail.textContent = tool.detail;
+    button.append(title, detail);
+    button.addEventListener('click', () => void runProfileTool(tool.id));
+    profileToolsListEl.appendChild(button);
+  }
+}
+
+function closeProfileTools(): void {
+  profileToolsEl.hidden = true;
+  profileToolsResultEl.hidden = true;
+  profileToolsCitationsEl.innerHTML = '';
+  latestProfileTool = null;
+  setProfileToolsError(null);
+  setProfileToolRunning(false);
+  syncOperationModal();
+}
+
+function showProfileTools(): void {
+  if (!currentVault || openProfileDefinition().tools.length === 0) return;
+  if (!queryPanelEl.hidden) closeQuery();
+  closeSidePanels();
+  latestProfileTool = null;
+  profileToolsResultEl.hidden = true;
+  setProfileToolsError(null);
+  setProfileToolRunning(false);
+  renderProfileTools();
+  profileToolsEl.hidden = false;
+  syncOperationModal();
+  window.setTimeout(() => profileToolsListEl.querySelector<HTMLButtonElement>('button')?.focus(), 0);
+}
+
+function renderProfileToolResult(result: ProfileToolResult): void {
+  profileToolsResultTitleEl.textContent = result.title;
+  profileToolsContentEl.textContent = result.content;
+  profileToolsCitationsEl.innerHTML = '';
+  if (result.citations.length === 0) {
+    const none = document.createElement('p');
+    none.className = 'query-no-citations';
+    none.textContent = 'No supporting brain pages were returned for this result.';
+    profileToolsCitationsEl.appendChild(none);
+  }
+  for (const citation of result.citations) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'query-citation';
+    const page = document.createElement('span');
+    page.className = 'query-citation-page';
+    page.textContent = citation.page;
+    item.appendChild(page);
+    if (citation.sources.length > 0) {
+      const sources = document.createElement('span');
+      sources.className = 'query-citation-sources';
+      sources.textContent = citation.sources.join(' · ');
+      item.appendChild(sources);
+    }
+    item.addEventListener('click', () => {
+      if (!vault?.byId.has(citation.page)) return;
+      closeProfileTools();
+      select(citation.page);
+    });
+    profileToolsCitationsEl.appendChild(item);
+  }
+  profileToolsResultEl.hidden = false;
+  updateExclusions();
+}
+
+async function runProfileTool(tool: ProfileToolId): Promise<void> {
+  if (!currentVault || profileToolRunning) return;
+  setProfileToolsError(null);
+  profileToolsResultEl.hidden = true;
+  setProfileToolRunning(true);
+  try {
+    const result = await invoke<ProfileToolResult>('profile_tool_run', { vault: currentVault, tool });
+    const toolDefinition = openProfileDefinition().tools.find((item) => item.id === tool);
+    latestProfileTool = {
+      tool,
+      title: result.title,
+      answer: { answer: result.content, citations: result.citations },
+    };
+    profileToolsKickerEl.textContent = toolDefinition?.label ?? 'Brain tool';
+    renderProfileToolResult(result);
+  } catch (error) {
+    setProfileToolsError(String(error));
+  } finally {
+    setProfileToolRunning(false);
+  }
+}
+
+async function saveProfileToolAsAnalysis(): Promise<void> {
+  if (!currentVault || !latestProfileTool || profileToolRunning) return;
+  const profile = openProfileDefinition();
+  const tool = profile.tools.find((item) => item.id === latestProfileTool?.tool);
+  profileToolsSaveEl.disabled = true;
+  setProfileToolsError(null);
+  setProfileToolRunning(true, 'Preparing review…');
+  try {
+    const review = await invoke<QueryReviewPayload>('query_save', {
+      vault: currentVault,
+      question: `${tool?.label ?? 'Brain tool'} · ${profile.label}`,
+      answer: latestProfileTool.answer,
+    });
+    closeProfileTools();
+    showReview({
+      kind: 'query',
+      id: review.reviewId,
+      subject: review.question,
+      patch: review.patch,
+      newIssues: review.newIssues,
+      deletions: review.deletions,
+      heldMessage: 'inspect the saved tool result before merging',
+    });
+    setIngestStatus('Tool result ready for review', false);
+  } catch (error) {
+    setProfileToolsError(String(error));
+  } finally {
+    profileToolsSaveEl.disabled = false;
+    setProfileToolRunning(false);
+  }
 }
 
 async function runQuery(): Promise<void> {
@@ -1857,6 +2067,7 @@ interface ChangeReview {
 
 function showReview(p: ChangeReview): void {
   if (!queryPanelEl.hidden) closeQuery();
+  if (!profileToolsEl.hidden) closeProfileTools();
   closeSidePanels();
   reviewId = p.id;
   reviewKind = p.kind;
@@ -2063,6 +2274,9 @@ newVaultFormEl.addEventListener('submit', (event) => {
 document.getElementById('detail-close')!.addEventListener('click', deselect);
 opIngestEl.addEventListener('click', () => void startIngest());
 opQueryEl.addEventListener('click', showQuery);
+opProfileToolsEl.addEventListener('click', showProfileTools);
+document.getElementById('profile-tools-close')!.addEventListener('click', closeProfileTools);
+profileToolsSaveEl.addEventListener('click', () => void saveProfileToolAsAnalysis());
 document.getElementById('query-close')!.addEventListener('click', closeQuery);
 queryFormEl.addEventListener('submit', (event) => {
   event.preventDefault();

@@ -792,6 +792,76 @@ body.operation-modal-open #ingest-status {
   width: min(680px, calc(100vw - 56px));
 }
 
+/* Profile tools are a small workbench: the profile names the kind of thinking
+   available, and each card names one concrete artifact Eva can build from the
+   local record. It stays deliberately quieter than the graph behind it. */
+#profile-tools {
+  width: min(700px, calc(100vw - 56px));
+}
+
+.profile-tool-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.profile-tool {
+  min-height: 94px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(255, 255, 253, 0.42);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.profile-tool:hover:not(:disabled) {
+  border-color: rgba(203, 24, 29, 0.46);
+  background: rgba(203, 24, 29, 0.045);
+  transform: translateY(-1px);
+}
+
+.profile-tool:focus-visible {
+  outline: 2px solid rgba(203, 24, 29, 0.52);
+  outline-offset: 2px;
+}
+
+.profile-tool:disabled {
+  cursor: default;
+  opacity: 0.56;
+}
+
+.profile-tool-title,
+.profile-tool-detail {
+  display: block;
+}
+
+.profile-tool-title {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-tool-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.42;
+  color: var(--ink-dim);
+}
+
+.profile-tool-result {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+#profile-tools-status {
+  margin: 14px 0 0;
+}
+
 /* Brain library: a compact shelf rather than another file browser. The list
    is deliberately named and ordered like a collection of notebooks, while
    importing remains an explicit action at the foot of the sheet. */
@@ -1800,6 +1870,10 @@ line.edge.lit {
     padding: 0 0 13px;
     border-right: 0;
     border-bottom: 1px solid var(--hairline);
+  }
+
+  .profile-tool-list {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -123,6 +123,30 @@ never rewrites sources or existing knowledge pages.
 | `course` | concepts, materials, practice, revision |
 | `blank` | knowledge-base |
 
+Profiles are operational. During **ingest**, Eva gives the selected agent a
+profile-specific extraction discipline in addition to the universal source,
+provenance, linking, and review rules. During **Health**, Eva asks it to look
+for that profile's characteristic maintenance gaps alongside contradictions
+and broken provenance. The profile never weakens Eva's safety boundary: raw
+sources and the agent contract remain protected, and proposed edits still pass
+the normal review gate.
+
+## Profile tools
+
+Eva exposes small, read-only tools only when they suit the brain's profile.
+They search the local brain, return a source-cited result, and can be saved as
+a normal reviewable analysis page. They never alter the brain by themselves.
+
+| profile | available tool | result |
+| --- | --- | --- |
+| `personal` | Reflection | patterns, movement, and questions to revisit without diagnosis |
+| `research` | Evidence map | claims, supporting and challenging evidence, and the next question |
+| `reading` | Threads map | characters, events, themes, and unresolved threads within the record |
+| `business` | Decision brief | options, owners, risks, assumptions, and unresolved decisions |
+| `planning` | Options review | trade-offs measured against objectives and constraints |
+| `course` | Flashcards; Practice exam | active-recall cards or a mixed exam with an answer key |
+| `blank` | — | use Eva's general Query and saved analyses |
+
 ## 5. Creating, importing, and upgrading
 
 **New brain** creates a fully compliant v1 brain in `~/Documents/Eva/Brains`.
