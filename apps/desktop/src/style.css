@@ -301,22 +301,33 @@ body::after {
   right: 16px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   padding: 8px 12px 8px 8px;
   border-radius: 14px;
 }
 
 .vault-cluster {
   display: flex;
+  flex: 1 1 0;
+  min-width: 0;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
+}
+
+.vault-cluster .btn-stamp:not(.aux) {
+  flex: 1 1 0;
+  text-align: center;
 }
 
 #vault-path {
+  flex: 1 1 0;
+  min-width: 0;
   font-family: var(--font-data);
   font-size: 12px;
   color: var(--ink-dim);
-  max-width: 26vw;
+  max-width: none;
+  padding: 0 6px;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -331,11 +342,15 @@ body::after {
 
 .ops {
   display: flex;
+  flex: 1.25 1 0;
+  min-width: 0;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 
 .op {
+  flex: 1 1 0;
+  min-width: 0;
   font-family: var(--font-data);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -346,7 +361,12 @@ body::after {
   border-radius: 999px;
   padding: 6px 10px;
   cursor: pointer;
+  text-align: center;
   transition: color 150ms ease, background 150ms ease;
+}
+
+#reorganize-graph {
+  flex: 0.85 1 0;
 }
 
 .op:hover:not(:disabled) {
@@ -365,6 +385,7 @@ body::after {
 }
 
 #ingest-status {
+  flex: 1 1 0;
   margin-left: auto;
   font-family: var(--font-data);
   font-size: 10px;

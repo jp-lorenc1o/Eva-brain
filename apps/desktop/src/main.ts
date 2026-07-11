@@ -110,7 +110,7 @@ const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElemen
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const AMBIENT_ALPHA = 0.0035;
+const AMBIENT_ALPHA = 0.0015;
 const PANEL_MARGIN = 28;
 const INFRA_FILES = new Set(['log.md', 'eva.md', 'agents.md', 'claude.md']);
 
