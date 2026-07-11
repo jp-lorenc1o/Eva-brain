@@ -19,6 +19,7 @@ import {
   buildGraph,
   buildVault,
   lintVault,
+  resolveLink,
   type Graph,
   type LintIssue,
   type Vault,
@@ -1309,6 +1310,217 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
   });
 }
 
+/* Reader -------------------------------------------------------------------
+   A brain is stored as Markdown, but reading it should not feel like opening
+   the source file. This deliberately small renderer builds DOM nodes rather
+   than trusting source HTML, so a local note cannot inject UI into Eva. */
+const READER_INLINE_TOKEN = /(\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*)/g;
+
+function appendReaderInline(container: HTMLElement, value: string): void {
+  let cursor = 0;
+  for (const match of value.matchAll(READER_INLINE_TOKEN)) {
+    const at = match.index ?? 0;
+    if (at > cursor) container.append(document.createTextNode(value.slice(cursor, at)));
+    const [token, , wikiTarget, wikiAlias, linkLabel, linkUrl, code, bold, italic] = match;
+    if (wikiTarget) {
+      const target = wikiTarget.trim();
+      const label = (wikiAlias ?? target).trim();
+      const resolved = vault ? resolveLink(vault, target) : null;
+      if (resolved) {
+        const link = document.createElement('a');
+        link.className = 'reader-link';
+        link.href = `#${encodeURIComponent(resolved.id)}`;
+        link.textContent = label;
+        link.title = `Open ${resolved.title}`;
+        link.addEventListener('click', (event) => {
+          event.preventDefault();
+          select(resolved.id);
+        });
+        container.appendChild(link);
+      } else {
+        const missing = document.createElement('span');
+        missing.className = 'reader-link reader-link-missing';
+        missing.textContent = label;
+        missing.title = `No page matches ${target}`;
+        container.appendChild(missing);
+      }
+    } else if (linkLabel && linkUrl) {
+      const link = document.createElement('a');
+      link.className = 'reader-external-link';
+      link.href = linkUrl;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.textContent = linkLabel;
+      container.appendChild(link);
+    } else if (code) {
+      const inlineCode = document.createElement('code');
+      inlineCode.textContent = code;
+      container.appendChild(inlineCode);
+    } else if (bold) {
+      const strong = document.createElement('strong');
+      strong.textContent = bold;
+      container.appendChild(strong);
+    } else if (italic) {
+      const emphasis = document.createElement('em');
+      emphasis.textContent = italic;
+      container.appendChild(emphasis);
+    } else {
+      container.append(document.createTextNode(token));
+    }
+    cursor = at + token.length;
+  }
+  if (cursor < value.length) container.append(document.createTextNode(value.slice(cursor)));
+}
+
+function readerTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+function isReaderTableRule(line: string): boolean {
+  return /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function isReaderBlockStart(line: string): boolean {
+  return /^(#{1,6}\s+|```|>\s?|[-+*]\s+|\d+\.\s+|---+\s*$)/.test(line) || isReaderTableRule(line);
+}
+
+function renderReaderBody(markdown: string): HTMLElement {
+  const article = document.createElement('article');
+  article.className = 'reader-body';
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    const heading = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (heading) {
+      const level = Math.min(heading[1].length + 1, 6);
+      const element = document.createElement(`h${level}`);
+      appendReaderInline(element, heading[2]);
+      article.appendChild(element);
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) {
+      article.appendChild(document.createElement('hr'));
+      index += 1;
+      continue;
+    }
+
+    if (/^```/.test(line.trim())) {
+      const language = line.trim().slice(3).trim();
+      const source: string[] = [];
+      index += 1;
+      while (index < lines.length && !/^```/.test(lines[index].trim())) {
+        source.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      const code = document.createElement('pre');
+      code.className = 'reader-code';
+      if (language) code.dataset.language = language;
+      code.textContent = source.join('\n');
+      article.appendChild(code);
+      continue;
+    }
+
+    if (line.includes('|') && index + 1 < lines.length && isReaderTableRule(lines[index + 1])) {
+      const table = document.createElement('table');
+      const head = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      for (const cell of readerTableRow(line)) {
+        const th = document.createElement('th');
+        appendReaderInline(th, cell);
+        headRow.appendChild(th);
+      }
+      head.appendChild(headRow);
+      table.appendChild(head);
+      const body = document.createElement('tbody');
+      index += 2;
+      while (index < lines.length && lines[index].trim().includes('|') && lines[index].trim()) {
+        const row = document.createElement('tr');
+        for (const cell of readerTableRow(lines[index])) {
+          const td = document.createElement('td');
+          appendReaderInline(td, cell);
+          row.appendChild(td);
+        }
+        body.appendChild(row);
+        index += 1;
+      }
+      table.appendChild(body);
+      article.appendChild(table);
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (index < lines.length && /^>\s?/.test(lines[index])) {
+        quoteLines.push(lines[index].replace(/^>\s?/, ''));
+        index += 1;
+      }
+      const quote = document.createElement('blockquote');
+      appendReaderInline(quote, quoteLines.join(' '));
+      article.appendChild(quote);
+      continue;
+    }
+
+    const unordered = /^[-+*]\s+(.+)$/.exec(line);
+    const ordered = /^(\d+)\.\s+(.+)$/.exec(line);
+    if (unordered || ordered) {
+      const list = document.createElement(unordered ? 'ul' : 'ol');
+      while (index < lines.length) {
+        const itemMatch = unordered
+          ? /^[-+*]\s+(.+)$/.exec(lines[index])
+          : /^(\d+)\.\s+(.+)$/.exec(lines[index]);
+        if (!itemMatch) break;
+        const item = document.createElement('li');
+        const task = /^\[([ xX])\]\s+(.+)$/.exec(itemMatch[1]);
+        if (task) {
+          const marker = document.createElement('span');
+          marker.className = 'reader-task';
+          marker.textContent = task[1].toLowerCase() === 'x' ? 'Done' : 'To do';
+          item.append(marker, document.createTextNode(' '));
+          appendReaderInline(item, task[2]);
+        } else {
+          appendReaderInline(item, itemMatch[1]);
+        }
+        list.appendChild(item);
+        index += 1;
+      }
+      article.appendChild(list);
+      continue;
+    }
+
+    const paragraphLines = [line.trim()];
+    index += 1;
+    while (index < lines.length && lines[index].trim() && !isReaderBlockStart(lines[index])) {
+      paragraphLines.push(lines[index].trim());
+      index += 1;
+    }
+    const paragraph = document.createElement('p');
+    appendReaderInline(paragraph, paragraphLines.join(' '));
+    article.appendChild(paragraph);
+  }
+
+  if (article.childElementCount === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'reader-empty';
+    empty.textContent = 'This page has no readable body yet.';
+    article.appendChild(empty);
+  }
+  return article;
+}
+
 function select(id: string): void {
   if (!vault) return;
   const page = vault.byId.get(id);
@@ -1372,8 +1584,7 @@ function select(id: string): void {
     }
   }
 
-  const body = document.createElement('pre');
-  body.textContent = page.body;
+  const body = renderReaderBody(page.body);
 
   sidebar.append(heading, meta, lintBox, body);
   detailEl.hidden = false;

@@ -1853,13 +1853,167 @@ button.issue:hover {
   --rule: #8b887a;
 }
 
-#sidebar pre {
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: var(--font-body);
-  font-size: 13.5px;
-  line-height: 1.6;
+/* Reader: Markdown source becomes a small, navigable manuscript. The red
+   pencil is reserved for links so a connection looks like an invitation, not
+   a literal pair of brackets. */
+.reader-body {
   color: #45443c;
+  font-size: 13.5px;
+  line-height: 1.64;
+}
+
+.reader-body > :first-child {
+  margin-top: 0;
+}
+
+.reader-body p {
+  margin: 0 0 11px;
+}
+
+.reader-body h2,
+.reader-body h3,
+.reader-body h4,
+.reader-body h5,
+.reader-body h6 {
+  margin: 20px 0 8px;
+  color: var(--ink);
+  font-family: var(--font-data);
+  font-weight: 400;
+  letter-spacing: 0.045em;
+}
+
+.reader-body h2 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.reader-body h3 {
+  font-size: 13px;
+}
+
+.reader-body h4,
+.reader-body h5,
+.reader-body h6 {
+  font-size: 12px;
+}
+
+.reader-body ul,
+.reader-body ol {
+  margin: 0 0 12px;
+  padding-left: 19px;
+}
+
+.reader-body li + li {
+  margin-top: 4px;
+}
+
+.reader-body blockquote {
+  margin: 12px 0;
+  padding: 7px 0 7px 12px;
+  border-left: 2px solid #a98436;
+  color: #5d5a4e;
+  font-family: var(--font-opening);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.reader-body hr {
+  height: 1px;
+  margin: 18px 0;
+  border: 0;
+  background: var(--hairline);
+}
+
+.reader-body code {
+  padding: 1px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: var(--recess);
+  color: #57554d;
+  font-family: var(--font-data);
+  font-size: 0.86em;
+}
+
+.reader-code {
+  margin: 12px 0;
+  overflow-x: auto;
+  padding: 10px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(236, 235, 225, 0.62);
+  color: #45443c;
+  font: 11.5px/1.55 var(--font-data);
+  white-space: pre;
+}
+
+.reader-body table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.reader-body th,
+.reader-body td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.reader-body th {
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.reader-link,
+.reader-external-link {
+  color: var(--red);
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(203, 24, 29, 0.45);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.reader-link:hover,
+.reader-external-link:hover {
+  color: #981217;
+  text-decoration-color: currentColor;
+}
+
+.reader-link:focus-visible,
+.reader-external-link:focus-visible {
+  outline: 2px solid rgba(203, 24, 29, 0.45);
+  outline-offset: 2px;
+}
+
+.reader-link-missing {
+  color: var(--ink-dim);
+  cursor: help;
+  text-decoration-style: dashed;
+}
+
+.reader-task {
+  display: inline-block;
+  min-width: 38px;
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 8.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.reader-empty {
+  margin: 0;
+  color: var(--ink-dim);
+  font-style: italic;
 }
 
 .placeholder {
