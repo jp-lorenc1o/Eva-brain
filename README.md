@@ -58,11 +58,15 @@ claims, evidence, and contradictions; a reading brain maintains chapters,
 characters, and threads; a course brain tracks concepts, practice gaps, and
 revision. Health checks use the same lens.
 
-The **Tools** button appears for profiles with focused local work. Results are
-always based on the open brain, cite their supporting pages, and must be saved
-through Eva's normal review flow. Course brains include **Flashcards** and a
-**Practice exam** with an answer key; no API keys, account, or cloud upload is
-needed.
+The **Tools** button appears whenever a brain is open. Results are always based
+on the open brain, cite their supporting pages, and must be saved through Eva's
+normal review flow. Course brains include **Flashcards** and a **Practice
+exam** with an answer key; no API keys, account, or cloud upload is needed.
+
+Those profile tools are suggestions, not walls: **Other tools** makes the full
+tool library available in every brain. Every tool accepts an optional focus;
+Flashcards can set a card count, and Practice exam can set its topics, question
+count, and format (mixed, multiple choice, written, or short answer).
 
 ## Interface language
 

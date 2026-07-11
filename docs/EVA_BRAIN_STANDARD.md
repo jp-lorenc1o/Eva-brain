@@ -133,9 +133,14 @@ the normal review gate.
 
 ## Profile tools
 
-Eva exposes small, read-only tools only when they suit the brain's profile.
-They search the local brain, return a source-cited result, and can be saved as
-a normal reviewable analysis page. They never alter the brain by themselves.
+Eva foregrounds the tools that suit a brain's selected profile, while making
+the complete tool library available from every brain. For example, a research
+brain can still make flashcards from its evidence pages, and a course brain
+can make an evidence map. A tool always searches the brain that is currently
+open; its original profile is a useful default, never a restriction.
+
+Tools are read-only: they return a source-cited result and can be saved as a
+normal reviewable analysis page. They never alter the brain by themselves.
 
 | profile | available tool | result |
 | --- | --- | --- |
@@ -146,6 +151,12 @@ a normal reviewable analysis page. They never alter the brain by themselves.
 | `planning` | Options review | trade-offs measured against objectives and constraints |
 | `course` | Flashcards; Practice exam | active-recall cards or a mixed exam with an answer key |
 | `blank` | — | use Eva's general Query and saved analyses |
+
+Every tool accepts an optional topic or focus. Flashcards can also request a
+number of cards. Practice exams can request topics, 6–12 questions, and one
+of `mixed`, `multiple-choice`, `written`, or `short-answer`; Eva keeps those
+choices in the generation instruction and states when the brain lacks enough
+evidence to fulfill them.
 
 ## 5. Creating, importing, and upgrading
 

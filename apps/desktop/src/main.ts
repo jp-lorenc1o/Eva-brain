@@ -56,7 +56,10 @@ const BRAIN_PROFILES = [
     label: 'Personal',
     detail: 'Goals, observations, reflections, and a private timeline.',
     modules: ['goals', 'observations', 'journal', 'timeline'],
-    tools: [{ id: 'personal-review', label: 'Reflection', detail: 'Trace patterns, movement, and questions across the record.' }],
+    tools: [{
+      id: 'personal-review', label: 'Reflection', detail: 'Trace patterns, movement, and questions across the record.',
+      focusPlaceholder: 'Optional: a period, theme, or question to reflect on…',
+    }],
     purposeLabel: 'What would you like to track?',
     purposePlaceholder: 'Goals, habits, health observations, or a question you want to understand…',
   },
@@ -65,7 +68,10 @@ const BRAIN_PROFILES = [
     label: 'Research',
     detail: 'A thesis, evidence, contradictions, and open questions.',
     modules: ['thesis', 'evidence', 'contradictions', 'bibliography'],
-    tools: [{ id: 'evidence-map', label: 'Evidence map', detail: 'Lay out claims, support, challenges, and the next question.' }],
+    tools: [{
+      id: 'evidence-map', label: 'Evidence map', detail: 'Lay out claims, support, challenges, and the next question.',
+      focusPlaceholder: 'Optional: a thesis, claim, or source set to focus on…',
+    }],
     purposeLabel: 'What question are you investigating?',
     purposePlaceholder: 'The topic, question, or thesis you want this brain to develop…',
   },
@@ -74,7 +80,10 @@ const BRAIN_PROFILES = [
     label: 'Reading companion',
     detail: 'Chapters, characters, plot threads, themes, and chronology.',
     modules: ['chapters', 'characters', 'threads', 'themes'],
-    tools: [{ id: 'reading-threads', label: 'Threads map', detail: 'Connect characters, events, and themes without inventing later material.' }],
+    tools: [{
+      id: 'reading-threads', label: 'Threads map', detail: 'Connect characters, events, and themes without inventing later material.',
+      focusPlaceholder: 'Optional: a character, chapter, or theme to focus on…',
+    }],
     purposeLabel: 'Which book or text are you following?',
     purposePlaceholder: 'Title, author, and any spoiler boundary you want Eva to respect…',
   },
@@ -83,7 +92,10 @@ const BRAIN_PROFILES = [
     label: 'Business record',
     detail: 'Projects, decisions, meetings, risks, and local operating context.',
     modules: ['projects', 'decisions', 'meetings', 'risks'],
-    tools: [{ id: 'decision-brief', label: 'Decision brief', detail: 'Bring together options, owners, evidence, risks, and open questions.' }],
+    tools: [{
+      id: 'decision-brief', label: 'Decision brief', detail: 'Bring together options, owners, evidence, risks, and open questions.',
+      focusPlaceholder: 'Optional: a decision, project, or meeting thread to focus on…',
+    }],
     purposeLabel: 'What business context should this brain maintain?',
     purposePlaceholder: 'A team, company, customer area, project, or decision space…',
   },
@@ -92,7 +104,10 @@ const BRAIN_PROFILES = [
     label: 'Planning',
     detail: 'Objectives, constraints, options, decisions, and a living plan.',
     modules: ['objectives', 'constraints', 'options', 'timeline'],
-    tools: [{ id: 'options-review', label: 'Options review', detail: 'Compare live choices against objectives, constraints, and trade-offs.' }],
+    tools: [{
+      id: 'options-review', label: 'Options review', detail: 'Compare live choices against objectives, constraints, and trade-offs.',
+      focusPlaceholder: 'Optional: an objective, decision, or set of options to focus on…',
+    }],
     purposeLabel: 'What are you planning?',
     purposePlaceholder: 'A trip, project, purchase, move, or other decision you are working through…',
   },
@@ -102,8 +117,22 @@ const BRAIN_PROFILES = [
     detail: 'Concepts, materials, practice gaps, and revision prompts.',
     modules: ['concepts', 'materials', 'practice', 'revision'],
     tools: [
-      { id: 'flashcards', label: 'Flashcards', detail: 'Create active-recall cards from the material already in this brain.' },
-      { id: 'practice-exam', label: 'Practice exam', detail: 'Build a mixed exam with an evidence-grounded answer key.' },
+      {
+        id: 'flashcards', label: 'Flashcards', detail: 'Create active-recall cards from the material already in this brain.',
+        focusPlaceholder: 'Optional: topics or chapters to include…',
+        countLabel: 'Cards', countOptions: [10, 15, 20],
+      },
+      {
+        id: 'practice-exam', label: 'Practice exam', detail: 'Build a mixed exam with an evidence-grounded answer key.',
+        focusPlaceholder: 'Optional: topics or chapters to test…',
+        formatLabel: 'Exam format', formatOptions: [
+          { value: 'mixed', label: 'Mixed' },
+          { value: 'multiple-choice', label: 'Multiple choice' },
+          { value: 'written', label: 'Written responses' },
+          { value: 'short-answer', label: 'Short answer' },
+        ],
+        countLabel: 'Questions', countOptions: [6, 8, 10, 12],
+      },
     ],
     purposeLabel: 'What are you learning?',
     purposePlaceholder: 'The course, subject, skill, or syllabus you want to master…',
@@ -184,6 +213,20 @@ const profileToolsEl = document.getElementById('profile-tools') as HTMLElement;
 const profileToolsKickerEl = document.getElementById('profile-tools-kicker') as HTMLElement;
 const profileToolsCopyEl = document.getElementById('profile-tools-copy') as HTMLElement;
 const profileToolsListEl = document.getElementById('profile-tools-list') as HTMLElement;
+const profileToolsOtherToggleEl = document.getElementById('profile-tools-other-toggle') as HTMLButtonElement;
+const profileToolsOtherEl = document.getElementById('profile-tools-other') as HTMLElement;
+const profileToolsOtherListEl = document.getElementById('profile-tools-other-list') as HTMLElement;
+const profileToolsConfigEl = document.getElementById('profile-tools-config') as HTMLElement;
+const profileToolsConfigOriginEl = document.getElementById('profile-tools-config-origin') as HTMLElement;
+const profileToolsConfigTitleEl = document.getElementById('profile-tools-config-title') as HTMLElement;
+const profileToolsConfigCopyEl = document.getElementById('profile-tools-config-copy') as HTMLElement;
+const profileToolsFocusEl = document.getElementById('profile-tools-focus') as HTMLTextAreaElement;
+const profileToolsFormatFieldEl = document.getElementById('profile-tools-format-field') as HTMLElement;
+const profileToolsFormatEl = document.getElementById('profile-tools-format') as HTMLSelectElement;
+const profileToolsCountFieldEl = document.getElementById('profile-tools-count-field') as HTMLElement;
+const profileToolsCountLabelEl = document.getElementById('profile-tools-count-label') as HTMLElement;
+const profileToolsCountEl = document.getElementById('profile-tools-count') as HTMLSelectElement;
+const profileToolsRunEl = document.getElementById('profile-tools-run') as HTMLButtonElement;
 const profileToolsErrorEl = document.getElementById('profile-tools-error') as HTMLElement;
 const profileToolsStatusEl = document.getElementById('profile-tools-status') as HTMLElement;
 const profileToolsResultEl = document.getElementById('profile-tools-result') as HTMLElement;
@@ -249,6 +292,8 @@ let latestQuery: { question: string; answer: QueryAnswer } | null = null;
 let currentBrainSettings: BrainSettings | null = null;
 let latestProfileTool: { tool: ProfileToolId; title: string; answer: QueryAnswer } | null = null;
 let profileToolRunning = false;
+let selectedProfileTool: ProfileToolId | null = null;
+let otherProfileToolsVisible = false;
 let healthReport: HealthReport | null = null;
 let healthError: string | null = null;
 let healthCheckRunning = false;
@@ -1839,10 +1884,9 @@ function openProfileDefinition() {
 }
 
 function updateProfileToolsAvailability(): void {
-  const profile = openProfileDefinition();
-  const available = profile.tools.length > 0;
+  const available = currentVault !== null;
   opProfileToolsEl.hidden = !available;
-  opProfileToolsEl.title = available ? `Run tools for this ${profile.label.toLowerCase()} brain` : '';
+  opProfileToolsEl.title = available ? 'Run tools from Eva’s profile library' : '';
 }
 
 function setProfileToolsError(message: string | null): void {
@@ -1855,31 +1899,110 @@ function setProfileToolRunning(running: boolean, label = 'Eva is reading the bra
   profileToolsEl.classList.toggle('is-processing', running);
   profileToolsStatusEl.hidden = !running;
   profileToolsStatusEl.textContent = running ? label : '';
-  profileToolsListEl.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+  profileToolsEl.querySelectorAll<HTMLButtonElement>('.profile-tool, .profile-tool-other, #profile-tools-other-toggle, #profile-tools-run').forEach((button) => {
     button.disabled = running;
   });
   opProfileToolsEl.classList.toggle('active', running);
 }
 
+function profileToolEntry(id: ProfileToolId) {
+  for (const profile of BRAIN_PROFILES) {
+    const tool = profile.tools.find((candidate) => candidate.id === id);
+    if (tool) return { profile, tool };
+  }
+  return null;
+}
+
+function renderProfileToolButton(
+  tool: (typeof BRAIN_PROFILES)[number]['tools'][number],
+  className: 'profile-tool' | 'profile-tool-other',
+  origin?: string,
+): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.classList.toggle('selected', selectedProfileTool === tool.id);
+  if (origin) {
+    const source = document.createElement('span');
+    source.className = 'profile-tool-origin';
+    source.textContent = origin;
+    button.appendChild(source);
+  }
+  const title = document.createElement('span');
+  title.className = 'profile-tool-title';
+  title.textContent = tool.label;
+  const detail = document.createElement('span');
+  detail.className = 'profile-tool-detail';
+  detail.textContent = tool.detail;
+  button.append(title, detail);
+  button.addEventListener('click', () => selectProfileTool(tool.id));
+  return button;
+}
+
 function renderProfileTools(): void {
   const profile = openProfileDefinition();
   profileToolsKickerEl.textContent = profile.label;
-  profileToolsCopyEl.textContent = `${profile.detail} Choose a focused piece of work; Eva uses only this brain and returns cited material you can save for review.`;
+  profileToolsCopyEl.textContent = `${profile.detail} These primary tools fit this brain’s profile. Eva uses only the brain you have open and returns cited material you can save for review.`;
   profileToolsListEl.innerHTML = '';
   for (const tool of profile.tools) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'profile-tool';
-    const title = document.createElement('span');
-    title.className = 'profile-tool-title';
-    title.textContent = tool.label;
-    const detail = document.createElement('span');
-    detail.className = 'profile-tool-detail';
-    detail.textContent = tool.detail;
-    button.append(title, detail);
-    button.addEventListener('click', () => void runProfileTool(tool.id));
-    profileToolsListEl.appendChild(button);
+    profileToolsListEl.appendChild(renderProfileToolButton(tool, 'profile-tool'));
   }
+
+  const otherProfiles = BRAIN_PROFILES.filter((candidate) => candidate.id !== profile.id && candidate.tools.length > 0);
+  const otherToolCount = otherProfiles.reduce((total, candidate) => total + candidate.tools.length, 0);
+  profileToolsOtherToggleEl.textContent = `Other tools · ${otherToolCount}`;
+  profileToolsOtherToggleEl.hidden = otherToolCount === 0;
+  profileToolsOtherToggleEl.setAttribute('aria-expanded', String(otherProfileToolsVisible));
+  profileToolsOtherEl.hidden = !otherProfileToolsVisible;
+  profileToolsOtherListEl.innerHTML = '';
+  if (otherProfileToolsVisible) {
+    for (const otherProfile of otherProfiles) {
+      for (const tool of otherProfile.tools) {
+        profileToolsOtherListEl.appendChild(renderProfileToolButton(tool, 'profile-tool-other', otherProfile.label));
+      }
+    }
+  }
+}
+
+function selectProfileTool(tool: ProfileToolId): void {
+  const entry = profileToolEntry(tool);
+  if (!entry) return;
+  selectedProfileTool = tool;
+  latestProfileTool = null;
+  profileToolsResultEl.hidden = true;
+  profileToolsFocusEl.value = '';
+  profileToolsConfigOriginEl.textContent = entry.profile.id === openProfileDefinition().id
+    ? 'Primary tool for this brain'
+    : `From the ${entry.profile.label} profile · uses this open brain`;
+  profileToolsConfigTitleEl.textContent = entry.tool.label;
+  profileToolsConfigCopyEl.textContent = entry.tool.detail;
+  profileToolsFocusEl.placeholder = entry.tool.focusPlaceholder;
+  profileToolsFormatFieldEl.hidden = !('formatOptions' in entry.tool);
+  profileToolsFormatEl.innerHTML = '';
+  if ('formatOptions' in entry.tool) {
+    for (const option of entry.tool.formatOptions) {
+      const element = document.createElement('option');
+      element.value = option.value;
+      element.textContent = option.label;
+      profileToolsFormatEl.appendChild(element);
+    }
+  }
+  profileToolsCountFieldEl.hidden = !('countOptions' in entry.tool);
+  profileToolsCountEl.innerHTML = '';
+  if ('countOptions' in entry.tool) {
+    profileToolsCountLabelEl.textContent = entry.tool.countLabel;
+    for (const count of entry.tool.countOptions) {
+      const option = document.createElement('option');
+      option.value = String(count);
+      option.textContent = String(count);
+      profileToolsCountEl.appendChild(option);
+    }
+    if (entry.tool.countOptions.length > 1) profileToolsCountEl.selectedIndex = 1;
+  }
+  profileToolsRunEl.textContent = `Run ${entry.tool.label}`;
+  profileToolsConfigEl.hidden = false;
+  renderProfileTools();
+  window.setTimeout(() => profileToolsFocusEl.focus(), 0);
 }
 
 function closeProfileTools(): void {
@@ -1887,23 +2010,31 @@ function closeProfileTools(): void {
   profileToolsResultEl.hidden = true;
   profileToolsCitationsEl.innerHTML = '';
   latestProfileTool = null;
+  selectedProfileTool = null;
+  otherProfileToolsVisible = false;
+  profileToolsConfigEl.hidden = true;
   setProfileToolsError(null);
   setProfileToolRunning(false);
   syncOperationModal();
 }
 
 function showProfileTools(): void {
-  if (!currentVault || openProfileDefinition().tools.length === 0) return;
+  if (!currentVault) return;
   if (!queryPanelEl.hidden) closeQuery();
   closeSidePanels();
   latestProfileTool = null;
+  selectedProfileTool = null;
+  otherProfileToolsVisible = false;
+  profileToolsConfigEl.hidden = true;
   profileToolsResultEl.hidden = true;
   setProfileToolsError(null);
   setProfileToolRunning(false);
   renderProfileTools();
   profileToolsEl.hidden = false;
   syncOperationModal();
-  window.setTimeout(() => profileToolsListEl.querySelector<HTMLButtonElement>('button')?.focus(), 0);
+  window.setTimeout(() => {
+    (profileToolsListEl.querySelector<HTMLButtonElement>('button') ?? profileToolsOtherToggleEl).focus();
+  }, 0);
 }
 
 function renderProfileToolResult(result: ProfileToolResult): void {
@@ -1941,20 +2072,30 @@ function renderProfileToolResult(result: ProfileToolResult): void {
   updateExclusions();
 }
 
-async function runProfileTool(tool: ProfileToolId): Promise<void> {
-  if (!currentVault || profileToolRunning) return;
+async function runProfileTool(): Promise<void> {
+  if (!currentVault || !selectedProfileTool || profileToolRunning) return;
+  const entry = profileToolEntry(selectedProfileTool);
+  if (!entry) return;
   setProfileToolsError(null);
   profileToolsResultEl.hidden = true;
   setProfileToolRunning(true);
   try {
-    const result = await invoke<ProfileToolResult>('profile_tool_run', { vault: currentVault, tool });
-    const toolDefinition = openProfileDefinition().tools.find((item) => item.id === tool);
+    const options = {
+      focus: profileToolsFocusEl.value.trim(),
+      format: profileToolsFormatFieldEl.hidden ? '' : profileToolsFormatEl.value,
+      count: profileToolsCountFieldEl.hidden || !profileToolsCountEl.value ? null : Number(profileToolsCountEl.value),
+    };
+    const result = await invoke<ProfileToolResult>('profile_tool_run', {
+      vault: currentVault,
+      tool: selectedProfileTool,
+      options,
+    });
     latestProfileTool = {
-      tool,
+      tool: selectedProfileTool,
       title: result.title,
       answer: { answer: result.content, citations: result.citations },
     };
-    profileToolsKickerEl.textContent = toolDefinition?.label ?? 'Brain tool';
+    profileToolsKickerEl.textContent = entry.tool.label;
     renderProfileToolResult(result);
   } catch (error) {
     setProfileToolsError(String(error));
@@ -1966,7 +2107,7 @@ async function runProfileTool(tool: ProfileToolId): Promise<void> {
 async function saveProfileToolAsAnalysis(): Promise<void> {
   if (!currentVault || !latestProfileTool || profileToolRunning) return;
   const profile = openProfileDefinition();
-  const tool = profile.tools.find((item) => item.id === latestProfileTool?.tool);
+  const tool = profileToolEntry(latestProfileTool.tool)?.tool;
   profileToolsSaveEl.disabled = true;
   setProfileToolsError(null);
   setProfileToolRunning(true, 'Preparing review…');
@@ -2276,6 +2417,11 @@ opIngestEl.addEventListener('click', () => void startIngest());
 opQueryEl.addEventListener('click', showQuery);
 opProfileToolsEl.addEventListener('click', showProfileTools);
 document.getElementById('profile-tools-close')!.addEventListener('click', closeProfileTools);
+profileToolsOtherToggleEl.addEventListener('click', () => {
+  otherProfileToolsVisible = !otherProfileToolsVisible;
+  renderProfileTools();
+});
+profileToolsRunEl.addEventListener('click', () => void runProfileTool());
 profileToolsSaveEl.addEventListener('click', () => void saveProfileToolAsAnalysis());
 document.getElementById('query-close')!.addEventListener('click', closeQuery);
 queryFormEl.addEventListener('submit', (event) => {

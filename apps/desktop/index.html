@@ -120,6 +120,31 @@
         <p id="profile-tools-copy" class="form-copy"></p>
       </div>
       <div id="profile-tools-list" class="profile-tool-list"></div>
+      <button id="profile-tools-other-toggle" class="profile-tools-other-toggle" type="button" aria-expanded="false">Other tools</button>
+      <section id="profile-tools-other" class="profile-tools-other" hidden aria-label="Other profile tools">
+        <p class="profile-tools-other-copy">Use any tool with this brain. Eva will work only from the brain you have open.</p>
+        <div id="profile-tools-other-list" class="profile-tools-other-list"></div>
+      </section>
+      <section id="profile-tools-config" class="profile-tools-config" hidden aria-live="polite">
+        <p id="profile-tools-config-origin" class="profile-tools-config-origin"></p>
+        <h3 id="profile-tools-config-title"></h3>
+        <p id="profile-tools-config-copy" class="profile-tools-config-copy"></p>
+        <label class="form-label" for="profile-tools-focus">Topics or focus <span class="optional">Optional</span></label>
+        <textarea id="profile-tools-focus" class="query-input profile-tools-focus" rows="2" maxlength="400" placeholder="Leave empty to use the whole brain."></textarea>
+        <div class="profile-tools-config-grid">
+          <label id="profile-tools-format-field" class="profile-tools-config-field" hidden>
+            <span class="form-label">Exam format</span>
+            <select id="profile-tools-format" class="text-input compact"></select>
+          </label>
+          <label id="profile-tools-count-field" class="profile-tools-config-field" hidden>
+            <span id="profile-tools-count-label" class="form-label">Questions</span>
+            <select id="profile-tools-count" class="text-input compact"></select>
+          </label>
+        </div>
+        <div class="profile-tools-config-actions">
+          <button id="profile-tools-run" class="btn-stamp" type="button">Run tool</button>
+        </div>
+      </section>
       <p id="profile-tools-error" class="form-error" role="alert" hidden></p>
       <p id="profile-tools-status" class="query-status" role="status" aria-live="polite" hidden></p>
       <section id="profile-tools-result" class="profile-tool-result" hidden aria-live="polite">
