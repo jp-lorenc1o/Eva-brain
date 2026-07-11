@@ -99,7 +99,6 @@ const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputEle
 const newVaultLanguageEl = document.getElementById('new-vault-language') as HTMLInputElement;
 const newVaultAgentEl = document.getElementById('new-vault-agent') as HTMLSelectElement;
 const newVaultPurposeEl = document.getElementById('new-vault-purpose') as HTMLTextAreaElement;
-const newVaultLocationEl = document.getElementById('new-vault-location') as HTMLElement;
 const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElement;
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
 
@@ -119,7 +118,6 @@ let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
-let newVaultParent: string | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
 let healthReport: HealthReport | null = null;
 let healthError: string | null = null;
@@ -267,9 +265,9 @@ async function collectMarkdown(root: string, rel = ''): Promise<VaultFile[]> {
   return files;
 }
 
-/* Recent vaults: a small MRU list in the webview's local storage (the app's
+/* Recent brains: a small MRU list in the webview's local storage (the app's
    existing local-preference store — no extra fs permissions needed). */
-const RECENT_KEY = 'eva-wiki:recent-vaults';
+const RECENT_KEY = 'eva:recent-brains';
 const MAX_RECENT = 5;
 
 function getRecents(): string[] {
@@ -335,7 +333,7 @@ async function openRecent(path: string): Promise<void> {
 }
 
 async function chooseVault(): Promise<void> {
-  const dir = await open({ directory: true, title: 'Open vault' });
+  const dir = await open({ directory: true, title: 'Open brain' });
   if (typeof dir === 'string') await openVault(dir);
 }
 
@@ -356,19 +354,15 @@ function validVaultName(name: string): boolean {
 }
 
 function updateNewVaultCreateState(): void {
-  newVaultCreateEl.disabled =
-    !newVaultParent || !validVaultName(newVaultNameEl.value) || !newVaultLanguageEl.value.trim();
+  newVaultCreateEl.disabled = !validVaultName(newVaultNameEl.value) || !newVaultLanguageEl.value.trim();
 }
 
 function closeNewVault(): void {
   newVaultEl.hidden = true;
-  newVaultParent = null;
   newVaultNameEl.value = '';
   newVaultLanguageEl.value = 'English';
   newVaultAgentEl.value = 'claude';
   newVaultPurposeEl.value = '';
-  newVaultLocationEl.textContent = 'Choose a parent folder';
-  newVaultLocationEl.removeAttribute('title');
   setNewVaultError(null);
   updateNewVaultCreateState();
   updateExclusions();
@@ -376,42 +370,28 @@ function closeNewVault(): void {
 
 function showNewVault(): void {
   newVaultEl.hidden = false;
-  newVaultParent = null;
   newVaultNameEl.value = '';
   newVaultLanguageEl.value = 'English';
   newVaultAgentEl.value = 'claude';
   newVaultPurposeEl.value = '';
-  newVaultLocationEl.textContent = 'Choose a parent folder';
-  newVaultLocationEl.removeAttribute('title');
   setNewVaultError(null);
   updateNewVaultCreateState();
   updateExclusions();
   window.setTimeout(() => newVaultNameEl.focus(), 0);
 }
 
-async function chooseNewVaultLocation(): Promise<void> {
-  const parent = await open({ directory: true, title: 'Choose a location for the new vault' });
-  if (typeof parent !== 'string') return;
-  newVaultParent = parent;
-  newVaultLocationEl.textContent = parent;
-  newVaultLocationEl.title = parent;
-  setNewVaultError(null);
-  updateNewVaultCreateState();
-}
-
 async function createNewVault(): Promise<void> {
   const name = newVaultNameEl.value.trim();
   const language = newVaultLanguageEl.value.trim();
-  if (!newVaultParent || !validVaultName(name) || !language) {
-    setNewVaultError('Choose a location, name the vault, and set its working language.');
+  if (!validVaultName(name) || !language) {
+    setNewVaultError('Name the brain and set its working language.');
     updateNewVaultCreateState();
     return;
   }
   newVaultCreateEl.disabled = true;
   setNewVaultError(null);
   try {
-    const root = await invoke<string>('vault_create', {
-      parent: newVaultParent,
+    const root = await invoke<string>('brain_create', {
       name,
       language,
       agent: newVaultAgentEl.value,
@@ -419,7 +399,7 @@ async function createNewVault(): Promise<void> {
     });
     closeNewVault();
     await openVault(root);
-    setIngestStatus('Vault created · add your first source with Ingest', false);
+    setIngestStatus('Brain created · add your first source with Ingest', false);
   } catch (error) {
     setNewVaultError(String(error));
     updateNewVaultCreateState();
@@ -792,7 +772,7 @@ function renderHealthReport(section: HTMLElement): void {
   if (healthCheckRunning) {
     const pending = document.createElement('p');
     pending.className = 'health-pending';
-    pending.textContent = 'Reading the wiki for maintenance signals…';
+    pending.textContent = 'Reading the brain for maintenance signals…';
     section.appendChild(pending);
     return;
   }
@@ -859,7 +839,7 @@ async function runHealthCheck(): Promise<void> {
   healthCheckRunning = true;
   healthError = null;
   renderLintPanel();
-  setIngestStatus('Checking vault health…', true);
+  setIngestStatus('Checking brain health…', true);
   try {
     const report = await invoke<HealthReport>('health_check_run', { vault: vaultPath });
     if (currentVault !== vaultPath) return;
@@ -966,11 +946,11 @@ function parseLog(markdown: string): LogEntry[] | null {
 function renderLogPanel(): void {
   logBodyEl.innerHTML = '';
   if (logRaw === null) {
-    logSubEl.textContent = 'no log.md in this vault';
+    logSubEl.textContent = 'no log.md in this brain';
     const empty = document.createElement('p');
     empty.className = 'log-empty';
     empty.textContent =
-      'No log yet. Once ingest and query run against this vault, every ' +
+      'No log yet. Once ingest and query run against this brain, every ' +
       'operation is recorded here — what changed, when, and why.';
     logBodyEl.appendChild(empty);
     return;
@@ -1084,7 +1064,7 @@ function setQueryRunning(running: boolean, label?: string): void {
   querySubmitEl.disabled = running;
   queryQuestionEl.disabled = running;
   queryStatusEl.hidden = !running;
-  queryStatusEl.textContent = running ? label ?? 'Reading the vault…' : '';
+  queryStatusEl.textContent = running ? label ?? 'Reading the brain…' : '';
   opQueryEl.classList.toggle('active', running);
 }
 
@@ -1118,7 +1098,7 @@ function renderQueryAnswer(answer: QueryAnswer): void {
   if (answer.citations.length === 0) {
     const none = document.createElement('p');
     none.className = 'query-no-citations';
-    none.textContent = 'No supporting vault pages were returned for this answer.';
+    none.textContent = 'No supporting brain pages were returned for this answer.';
     queryCitationsEl.appendChild(none);
   }
   for (const citation of answer.citations) {
@@ -1150,7 +1130,7 @@ async function runQuery(): Promise<void> {
   if (!currentVault) return;
   const question = queryQuestionEl.value.trim();
   if (!question) {
-    setQueryError('Enter a question for this vault.');
+    setQueryError('Enter a question for this brain.');
     return;
   }
   setQueryError(null);
@@ -1271,7 +1251,7 @@ async function decideReview(accept: boolean): Promise<void> {
     } else {
       await invoke('query_decide', { reviewId: id, accept });
       if (currentVault) await openVault(currentVault);
-      setIngestStatus(accept ? 'Analysis saved to the vault' : 'Analysis not saved', false);
+      setIngestStatus(accept ? 'Analysis saved to the brain' : 'Analysis not saved', false);
     }
   } catch (error) {
     setIngestStatus(String(error), false);
@@ -1367,7 +1347,6 @@ document.getElementById('open-vault')!.addEventListener('click', () => void choo
 document.getElementById('empty-open')!.addEventListener('click', () => void chooseVault());
 document.getElementById('new-vault-button')!.addEventListener('click', showNewVault);
 document.getElementById('empty-new')!.addEventListener('click', showNewVault);
-document.getElementById('new-vault-location-button')!.addEventListener('click', () => void chooseNewVaultLocation());
 document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
 newVaultNameEl.addEventListener('input', () => {
   setNewVaultError(null);

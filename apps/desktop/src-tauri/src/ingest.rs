@@ -178,13 +178,13 @@ fn require_vault_repo(vault: &Path) -> Result<PathBuf, String> {
     Ok(root)
 }
 
-fn vault_dir_name(name: &str) -> Result<&str, String> {
+fn brain_dir_name(name: &str) -> Result<&str, String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("enter a vault name".into());
+        return Err("enter a brain name".into());
     }
     if name.len() > 80 {
-        return Err("vault names must be 80 characters or fewer".into());
+        return Err("brain names must be 80 characters or fewer".into());
     }
     if matches!(name, "." | "..")
         || name.contains(['/', '\\'])
@@ -193,6 +193,22 @@ fn vault_dir_name(name: &str) -> Result<&str, String> {
         return Err("use a single folder name, without slashes".into());
     }
     Ok(name)
+}
+
+/// The app-owned home for brains created through Eva. Existing brains can
+/// still be opened from anywhere, but new ones never need a folder picker.
+fn brains_root_at(home: &Path) -> PathBuf {
+    home.join("Documents").join("Eva").join("Brains")
+}
+
+fn brains_root() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or("could not locate your home folder")?;
+    let root = brains_root_at(&home);
+    fs::create_dir_all(&root).map_err(|e| format!("create Eva Brains folder: {e}"))?;
+    root.canonicalize()
+        .map_err(|e| format!("Eva Brains folder: {e}"))
 }
 
 fn profile_text(value: &str, field: &str, max: usize, required: bool) -> Result<String, String> {
@@ -266,19 +282,14 @@ fn bootstrap_vault(root: &Path, profile: Option<&VaultProfile>) -> Result<bool, 
     Ok(true)
 }
 
-fn create_vault(parent: &Path, name: &str, profile: &VaultProfile) -> Result<PathBuf, String> {
-    let name = vault_dir_name(name)?;
-    let parent = parent
-        .canonicalize()
-        .map_err(|e| format!("vault location: {e}"))?;
-    if !parent.is_dir() {
-        return Err("choose an existing folder for the new vault".into());
-    }
+fn create_brain(name: &str, profile: &VaultProfile) -> Result<PathBuf, String> {
+    let name = brain_dir_name(name)?;
+    let parent = brains_root()?;
     let root = parent.join(name);
     if root.exists() {
-        return Err(format!("a folder named \"{name}\" already exists there"));
+        return Err(format!("a brain named \"{name}\" already exists in Eva Brains"));
     }
-    fs::create_dir(&root).map_err(|e| format!("create vault folder: {e}"))?;
+    fs::create_dir(&root).map_err(|e| format!("create brain folder: {e}"))?;
 
     match Command::new("git")
         .args(["init", "-b", "main"])
@@ -304,7 +315,7 @@ fn create_vault(parent: &Path, name: &str, profile: &VaultProfile) -> Result<Pat
         // `root` was created by this command, so cleanup cannot touch an
         // existing vault if Git or the initial commit is unavailable.
         let _ = fs::remove_dir_all(&root);
-        return Err(format!("bootstrap new vault: {error}"));
+        return Err(format!("bootstrap new brain: {error}"));
     }
     Ok(root)
 }
@@ -1116,15 +1127,14 @@ pub fn ensure_schema(vault: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn vault_create(
-    parent: String,
+pub fn brain_create(
     name: String,
     language: String,
     agent: String,
     purpose: String,
 ) -> Result<String, String> {
     let profile = vault_profile(&language, &agent, &purpose)?;
-    let root = create_vault(Path::new(&parent), &name, &profile)?;
+    let root = create_brain(&name, &profile)?;
     Ok(root.to_string_lossy().to_string())
 }
 
@@ -1229,17 +1239,18 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, eva_schema, vault_dir_name, vault_profile, QueryAnswer, QueryCitation};
+    use super::{analysis_markdown, brain_dir_name, brains_root_at, eva_schema, vault_profile, QueryAnswer, QueryCitation};
+    use std::path::Path;
 
     #[test]
-    fn accepts_a_single_human_readable_folder_name() {
-        assert_eq!(vault_dir_name("  Research atlas  ").unwrap(), "Research atlas");
+    fn accepts_a_single_human_readable_brain_name() {
+        assert_eq!(brain_dir_name("  Research atlas  ").unwrap(), "Research atlas");
     }
 
     #[test]
-    fn rejects_path_like_or_empty_vault_names() {
+    fn rejects_path_like_or_empty_brain_names() {
         for name in ["", " ", ".", "..", "research/atlas", "research\\atlas"] {
-            assert!(vault_dir_name(name).is_err(), "{name:?} should be rejected");
+            assert!(brain_dir_name(name).is_err(), "{name:?} should be rejected");
         }
     }
 
@@ -1258,12 +1269,20 @@ mod tests {
     }
 
     #[test]
-    fn new_vault_profile_is_written_into_the_agent_schema() {
+    fn new_brain_profile_is_written_into_the_agent_schema() {
         let profile = vault_profile("Español", "claude", "Investigación de mercado").unwrap();
         let schema = eva_schema(Some(&profile));
         assert!(schema.contains("**Working language:** Español"));
         assert!(schema.contains("**Agent runtime:** Claude CLI"));
         assert!(schema.contains("**Purpose:** Investigación de mercado"));
+    }
+
+    #[test]
+    fn brains_have_a_stable_app_owned_home() {
+        assert_eq!(
+            brains_root_at(Path::new("/Users/example")),
+            Path::new("/Users/example/Documents/Eva/Brains")
+        );
     }
 }
 

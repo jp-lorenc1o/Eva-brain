@@ -1,6 +1,6 @@
-# Eva V1 vault contract
+# Eva V1 brain contract
 
-Eva is a local-first LLM Wiki: it incrementally turns curated, immutable
+Eva is a local-first LLM Brain: it incrementally turns curated, immutable
 source material into a maintained Markdown knowledge base. This contract is
 the stable boundary between the desktop app, an agent runtime, and an Eva
 vault.
@@ -22,11 +22,11 @@ semantics are defined in [`schema/EVA.md`](../schema/EVA.md). The portable
 agent contract is `EVA.md`; `AGENTS.md` and `CLAUDE.md` merely point compatible
 agents to it.
 
-The app's **New vault** flow creates a folder, initializes a local Git
-repository on `main`, asks for the working language, agent runtime, and an
-optional purpose, then writes that profile into `EVA.md` with the initial
-infrastructure. Opening an existing Git-root vault writes only missing
-infrastructure files:
+The app's **New brain** flow creates a folder in `~/Documents/Eva/Brains`,
+initializes a local Git repository on `main`, asks for the working language,
+agent runtime, and an optional purpose, then writes that profile into `EVA.md`
+with the initial infrastructure. Opening an existing Git-root brain writes only
+missing infrastructure files:
 
 - `EVA.md`, `AGENTS.md`, and `CLAUDE.md`
 - `index.md` and `log.md`

@@ -15,7 +15,7 @@ fn main() {
             ingest::ingest_enqueue,
             ingest::ingest_decide,
             ingest::ensure_schema,
-            ingest::vault_create,
+            ingest::brain_create,
             ingest::query_run,
             ingest::health_check_run,
             ingest::query_save,

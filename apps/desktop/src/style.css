@@ -217,15 +217,6 @@ body::after {
   background: rgba(236, 235, 225, 0.8);
 }
 
-.launch-choice.primary {
-  border-color: rgba(203, 24, 29, 0.5);
-  background: rgba(203, 24, 29, 0.045);
-}
-
-.launch-choice.primary:hover {
-  background: rgba(203, 24, 29, 0.09);
-}
-
 .launch-choice-title,
 .launch-choice-detail {
   display: block;
@@ -834,9 +825,9 @@ button.query-citation:hover {
   color: var(--ink-dim);
 }
 
-/* New vault: an opening folio, concise enough that the choice is about the
-   knowledge project rather than a configuration form. The location is shown
-   as a ledger line — it is the one irreversible choice in this small ritual. */
+/* New brain: an opening folio, concise enough that the choice is about the
+   knowledge project rather than a configuration form. Its home is a quiet
+   ledger line: Eva owns the folder, the human owns every brain inside it. */
 #new-vault {
   top: 50%;
   left: 50%;
@@ -956,26 +947,19 @@ select.text-input:focus {
   box-shadow: 0 0 0 3px rgba(203, 24, 29, 0.08);
 }
 
-.location-field {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
+.brain-home {
   padding: 10px 0 12px;
   border-top: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
 }
 
-.location-value {
+.brain-home-value {
   display: block;
-  max-width: 270px;
   margin-top: 4px;
-  overflow: hidden;
   color: var(--ink);
   font-family: var(--font-data);
   font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
 }
 
 .form-error {

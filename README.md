@@ -1,8 +1,8 @@
-# Eva — LLM Wiki
+# Eva — LLM Brain
 
 Eva is a local-first desktop app for building a personal knowledge base with an
 LLM. Instead of repeatedly retrieving from raw documents at question time, Eva
-helps an agent maintain a durable, linked Markdown wiki between the sources
+helps an agent maintain a durable, linked Markdown brain between the sources
 and the user.
 
 The V1 on-disk and operational contract lives in
@@ -26,15 +26,15 @@ npm test             # wiki-lib unit tests (vitest)
 npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ```
 
-## First vault
+## First brain
 
-Choose **New vault** from the opening screen, select a parent folder, and name
-the knowledge project. The setup sheet asks for its working language, AI
-runtime, and optional purpose; Eva stores that profile in `EVA.md`, creates a
-local Git repository and starter wiki, then opens the graph. Select **Ingest**
-to add the first source. Select **Query** to ask the maintained wiki a
-question; useful answers can be saved as a reviewable analysis page. Use
-**Open vault** for an existing Markdown vault.
+Choose **New brain** from the opening screen and name the knowledge project.
+The setup sheet asks for its working language, AI runtime, and optional
+purpose; Eva stores that profile in `EVA.md`, creates a local Git repository
+and starter brain in `~/Documents/Eva/Brains`, then opens the graph. Select
+**Ingest** to add the first source. Select **Query** to ask the maintained
+brain a question; useful answers can be saved as a reviewable analysis page.
+Use **Open brain** for an existing Markdown vault.
 
 ## Health Check
 
@@ -45,7 +45,7 @@ edits pages, creates tasks, or commits changes.
 
 ## Privacy
 
-Eva copies selected source files into a vault's `raw/` directory and commits
+Eva copies selected source files into a brain's `raw/` directory and commits
 them there as source of truth. Use a private Git remote for any vault that
 contains personal, proprietary, client, or copyrighted source material.
 
