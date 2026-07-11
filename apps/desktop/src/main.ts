@@ -123,8 +123,6 @@ let simNodes: SimNode[] = [];
 let refreshPositions: (() => void) | null = null;
 let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
-let homeX = forceX<SimNode>(0).strength(0);
-let homeY = forceY<SimNode>(0).strength(0);
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
@@ -157,10 +155,12 @@ function updateExclusions(): void {
   let movedPin = false;
   for (const node of simNodes) {
     if (node.fx == null || node.fy == null) continue;
+    if (isHomeNode(node)) continue;
     const nudged = nudgeOutside(node.fx, node.fy);
-    if (nudged.x !== node.fx || nudged.y !== node.fy) {
-      node.fx = nudged.x;
-      node.fy = nudged.y;
+    const safe = keepNodeInViewport(nudged.x, nudged.y, nodeCollisionRadius(node));
+    if (safe.x !== node.fx || safe.y !== node.fy) {
+      node.fx = safe.x;
+      node.fy = safe.y;
       movedPin = true;
     }
   }
@@ -168,31 +168,15 @@ function updateExclusions(): void {
     simulation?.tick(1);
     refreshPositions?.();
   }
-  // Panels also define the usable field: keep the centering forces aimed at
-  // the middle of the space between top- and bottom-docked panels.
-  const center = usableCenter();
+  // Keep the graph's reference point at the literal page center. Panels are
+  // still handled by the dedicated exclusion force.
+  const center = pageCenter();
   centerX.x(center.x);
   centerY.y(center.y);
-  homeX.x((node) => (isHomeNode(node) ? center.x : 0));
-  homeY.y((node) => (isHomeNode(node) ? center.y : 0));
 }
 
-/** Center of the vertical space between top-docked and bottom-docked panels
-    (side panels don't constrain the vertical field). */
-function usableCenter(): { x: number; y: number } {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  let top = 0;
-  let bottom = h;
-  for (const el of document.querySelectorAll<HTMLElement>('.glass')) {
-    if (el.hidden) continue;
-    const r = el.getBoundingClientRect();
-    const mid = (r.top + r.bottom) / 2;
-    if (mid < h / 3) top = Math.max(top, r.bottom + PANEL_MARGIN);
-    else if (mid > (2 * h) / 3) bottom = Math.min(bottom, r.top - PANEL_MARGIN);
-  }
-  if (bottom - top < h / 3) return { x: w / 2, y: h / 2 };
-  return { x: w / 2, y: (top + bottom) / 2 };
+function pageCenter(): { x: number; y: number } {
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 }
 
 const insideRect = (x: number, y: number, r: Rect): boolean =>
@@ -274,11 +258,48 @@ function nodeCollisionRadius(node: Pick<SimNode, 'title'>): number {
   return Math.min(150, Math.max(42, 20 + node.title.length * 3.1));
 }
 
+function keepNodeInViewport(x: number, y: number, radius: number): { x: number; y: number } {
+  const padding = 18;
+  const clamp = (value: number, min: number, max: number) =>
+    min > max ? (min + max) / 2 : Math.min(max, Math.max(min, value));
+  return {
+    x: clamp(x, padding + radius, window.innerWidth - padding - radius),
+    y: clamp(y, padding + radius, window.innerHeight - padding - radius),
+  };
+}
+
+function forceViewportBounds() {
+  let nodes: SimNode[] = [];
+  const force = () => {
+    for (const node of nodes) {
+      if (isHomeNode(node)) continue;
+      const safe = keepNodeInViewport(node.x ?? 0, node.y ?? 0, nodeCollisionRadius(node));
+      if (node.fx != null || node.fy != null) {
+        node.fx = safe.x;
+        node.fy = safe.y;
+      } else {
+        if (safe.x !== node.x) node.vx = (node.vx ?? 0) * 0.35;
+        if (safe.y !== node.y) node.vy = (node.vy ?? 0) * 0.35;
+        node.x = safe.x;
+        node.y = safe.y;
+      }
+    }
+  };
+  force.initialize = (next: SimNode[]) => {
+    nodes = next;
+  };
+  return force;
+}
+
+const viewportBoundsForce = forceViewportBounds();
+
 function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): void {
   const home = nodes.find(isHomeNode);
   if (home) {
     home.x = center.x;
     home.y = center.y;
+    home.fx = center.x;
+    home.fy = center.y;
     home.vx = 0;
     home.vy = 0;
   }
@@ -294,18 +315,21 @@ function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): voi
 
 function reorganizeGraph(): void {
   if (!simulation || simNodes.length === 0) return;
-  const center = usableCenter();
+  const center = pageCenter();
   for (const node of simNodes) {
     node.fx = null;
     node.fy = null;
     node.vx = 0;
     node.vy = 0;
   }
+  const home = simNodes.find(isHomeNode);
+  if (home) {
+    home.fx = center.x;
+    home.fy = center.y;
+  }
   svg.querySelectorAll('.node.pinned').forEach((node) => node.classList.remove('pinned'));
   centerX.x(center.x);
   centerY.y(center.y);
-  homeX.x((node) => (isHomeNode(node) ? center.x : 0));
-  homeY.y((node) => (isHomeNode(node) ? center.y : 0));
 
   if (reducedMotion) {
     simulation.stop();
@@ -638,11 +662,9 @@ function renderLegend(): void {
 
 function renderGraph(graph: Graph): void {
   simulation?.stop();
-  // Seed nodes around the usable center: d3's default seeding spirals around
-  // the origin — the top-left corner, inside the toolbar's exclusion zone —
-  // which strands the cluster along the top edge once the settle phase is
-  // spent fighting the panel force.
-  const center = usableCenter();
+  // Seed Home at the page center. Its catalog links then make the rest of the
+  // graph settle outward, while the panel force preserves access to nodes.
+  const center = pageCenter();
   const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
   seedGraphNodes(nodes, center);
   simNodes = nodes;
@@ -717,12 +739,6 @@ function renderGraph(graph: Graph): void {
 
   centerX = forceX<SimNode>(center.x).strength(0.032);
   centerY = forceY<SimNode>(center.y).strength(0.038);
-  homeX = forceX<SimNode>((node) => (isHomeNode(node) ? center.x : 0)).strength((node) =>
-    isHomeNode(node) ? 0.24 : 0,
-  );
-  homeY = forceY<SimNode>((node) => (isHomeNode(node) ? center.y : 0)).strength((node) =>
-    isHomeNode(node) ? 0.24 : 0,
-  );
 
   simulation = forceSimulation(nodes)
     .alphaDecay(LAYOUT_ALPHA_DECAY)
@@ -738,8 +754,6 @@ function renderGraph(graph: Graph): void {
     .force('charge', forceManyBody().strength(-520))
     .force('x', centerX)
     .force('y', centerY)
-    .force('home-x', homeX)
-    .force('home-y', homeY)
     .force(
       'collide',
       forceCollide<SimNode>()
@@ -748,6 +762,7 @@ function renderGraph(graph: Graph): void {
         .iterations(2),
     )
     .force('panels', panelForce)
+    .force('bounds', viewportBoundsForce)
     .on('tick', updatePositions);
 
   if (reducedMotion) {
@@ -786,8 +801,9 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
     // unreachable: if it was dropped inside a panel, move it (pin included)
     // to the nearest point just outside.
     const nudged = nudgeOutside(node.fx ?? node.x ?? 0, node.fy ?? node.y ?? 0);
-    node.fx = nudged.x;
-    node.fy = nudged.y;
+    const safe = keepNodeInViewport(nudged.x, nudged.y, nodeCollisionRadius(node));
+    node.fx = safe.x;
+    node.fy = safe.y;
     g.classList.add('pinned');
     simulation?.alphaTarget(reducedMotion ? 0 : AMBIENT_ALPHA);
   };
