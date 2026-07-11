@@ -159,6 +159,23 @@ function profileDefinition(id: string): (typeof BRAIN_PROFILES)[number] {
 const colorFor = (type: string | null): string =>
   (type !== null && TYPE_COLORS[type]) || FALLBACK_COLOR;
 
+const TYPE_TRANSLATION_KEYS: Record<string, TranslationKey> = {
+  index: 'type.index',
+  entity: 'type.entity',
+  concept: 'type.concept',
+  summary: 'type.summary',
+  analysis: 'type.analysis',
+  person: 'type.person',
+  project: 'type.project',
+  note: 'type.note',
+  log: 'type.log',
+  untyped: 'type.untyped',
+};
+
+function pageTypeLabel(type: string | null): string {
+  return t(TYPE_TRANSLATION_KEYS[type ?? 'untyped'] ?? 'type.untyped');
+}
+
 interface SimNode extends SimulationNodeDatum {
   id: string;
   title: string;
@@ -364,6 +381,9 @@ function applyInterfaceLanguage(): void {
   populateBrainProfileOptions(newVaultProfileEl, newVaultProfileEl.value || 'research');
   updateNewVaultProfileFrame();
   if (!currentVault) vaultPathEl.textContent = t('nav.noBrain');
+  const selectedId = svg.querySelector<SVGGElement>('.node.selected')?.dataset.id;
+  if (vault) renderLegend();
+  if (selectedId) select(selectedId);
   refreshRecentViews();
   if (!brainLibraryEl.hidden) void loadBrainLibrary();
   if (!brainManagerEl.hidden) renderBrainManager();
@@ -1109,7 +1129,7 @@ function renderLegend(): void {
     const dot = document.createElement('span');
     dot.className = 'type-dot';
     dot.style.setProperty('--dot', colorFor(type === 'untyped' ? null : type));
-    key.append(dot, document.createTextNode(type));
+    key.append(dot, document.createTextNode(pageTypeLabel(type === 'untyped' ? null : type)));
     legendEl.appendChild(key);
   }
   legendEl.hidden = vault.pages.length === 0;
@@ -1566,7 +1586,7 @@ function select(id: string): void {
   const dot = document.createElement('span');
   dot.className = 'type-dot';
   dot.style.setProperty('--dot', colorFor(page.type));
-  chip.append(dot, document.createTextNode(page.type ?? 'untyped'));
+  chip.append(dot, document.createTextNode(pageTypeLabel(page.type)));
   meta.append(pathSpan, chip);
 
   const lintBox = document.createElement('div');
