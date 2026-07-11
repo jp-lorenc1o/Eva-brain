@@ -150,7 +150,20 @@ fn emit_state(app: &AppHandle, st: &IngestState) {
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
+    let mut command = Command::new("git");
+    // Eva uses Git only as a local change ledger. Supplying an author for
+    // commits and review merges means a person can use Eva without setting up
+    // Git, creating an account, or signing in to a hosting service. This is a
+    // command-local setting: it does not modify the person's Git config.
+    if git_action_needs_eva_identity(args) {
+        command.args([
+            "-c",
+            "user.name=Eva",
+            "-c",
+            "user.email=eva@local",
+        ]);
+    }
+    let out = command
         .args(args)
         .current_dir(dir)
         .output()
@@ -163,6 +176,10 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ))
     }
+}
+
+fn git_action_needs_eva_identity(args: &[&str]) -> bool {
+    matches!(args.first(), Some(&"commit" | &"merge"))
 }
 
 /// The vault must be the ROOT of its own git repository — this is what keeps
@@ -1361,8 +1378,12 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, brain_dir_name, brains_root_at, eva_schema, vault_profile, QueryAnswer, QueryCitation};
-    use std::path::Path;
+    use super::{analysis_markdown, brain_dir_name, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, vault_profile, QueryAnswer, QueryCitation};
+    use std::{
+        fs,
+        path::Path,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn accepts_a_single_human_readable_brain_name() {
@@ -1405,6 +1426,32 @@ mod tests {
             brains_root_at(Path::new("/Users/example")),
             Path::new("/Users/example/Documents/Eva/Brains")
         );
+    }
+
+    #[test]
+    fn eva_supplies_a_local_identity_only_when_git_writes_history() {
+        assert!(git_action_needs_eva_identity(&["commit", "-m", "test"]));
+        assert!(git_action_needs_eva_identity(&["merge", "--no-ff", "review"]));
+        assert!(!git_action_needs_eva_identity(&["status", "--porcelain"]));
+        assert!(!git_action_needs_eva_identity(&["worktree", "add", "path"]));
+    }
+
+    #[test]
+    fn app_history_does_not_depend_on_a_personal_git_identity() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-local-history-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+        fs::write(root.join("note.md"), "# Local only\n").unwrap();
+        git(&root, &["add", "note.md"]).unwrap();
+        git(&root, &["commit", "-m", "test: local history"]).unwrap();
+
+        let author = git(&root, &["log", "-1", "--format=%an <%ae>"]).unwrap();
+        assert_eq!(author.trim(), "Eva <eva@local>");
+        fs::remove_dir_all(root).unwrap();
     }
 }
 

@@ -13,7 +13,7 @@ artifact that remains useful for future work.
 
 The human curates sources, directs the analysis, and approves sensitive
 changes. The agent handles summarization, cross-references, synthesis, and
-bookkeeping. Git makes each change inspectable and reversible.
+bookkeeping. Local Git history makes each change inspectable and reversible.
 
 ## On-disk contract
 
@@ -25,8 +25,10 @@ agents to it.
 The app's **New brain** flow creates a folder in `~/Documents/Eva/Brains`,
 initializes a local Git repository on `main`, asks for the working language,
 agent runtime, and an optional purpose, then writes that profile into `EVA.md`
-with the initial infrastructure. Opening an existing Git-root brain writes only
-missing infrastructure files:
+with the initial infrastructure. This local repository does not need a GitHub
+account, a remote, or a configured Git identity: Eva supplies command-local
+`Eva <eva@local>` metadata for history it creates. Opening an existing Git-root
+brain writes only missing infrastructure files:
 
 - `EVA.md`, `AGENTS.md`, and `CLAUDE.md`
 - `index.md` and `log.md`
@@ -87,6 +89,8 @@ they must not change the on-disk format.
 
 ## Privacy boundary
 
-Eva can commit the selected original documents into `raw/`. A vault with
-personal, client, proprietary, or copyrighted materials should use a private
-Git remote. The app repository itself contains only code and templates.
+Eva can commit the selected original documents into `raw/` as local history.
+It never creates a remote or pushes a brain. Brains with personal, client,
+proprietary, or copyrighted materials therefore remain on the person's device
+unless they explicitly choose to copy, back up, or share them. The app
+repository itself contains only code and templates.

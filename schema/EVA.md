@@ -111,7 +111,8 @@ semantic suggestions should be reported for human review.
 
 ## Safety and versioning
 
-The vault is a Git repository. Eva performs agent work in an isolated worktree
-and records every ingest in `log.md`. New lint issues and deletions require
-human review before merging. Keep any vault containing personal, proprietary,
-or sensitive raw sources in a private repository.
+The vault is a local Git repository. Eva performs agent work in an isolated
+worktree and records every ingest in `log.md`. New lint issues and deletions
+require human review before merging. Eva never creates a remote or pushes this
+brain; it stays on the person's device unless they explicitly choose to share
+or back it up.

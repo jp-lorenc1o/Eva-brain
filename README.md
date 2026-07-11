@@ -7,7 +7,7 @@ and the user.
 
 The V1 on-disk and operational contract lives in
 [`docs/V1_VAULT_CONTRACT.md`](docs/V1_VAULT_CONTRACT.md). It keeps sources,
-wiki pages, agent instructions, and Git history portable across tools.
+wiki pages, agent instructions, and local change history portable across tools.
 
 - `packages/wiki-lib` — pure TypeScript frontmatter/wiki-link parsing, graph
   building, and deterministic structural linting. Includes a 16-page fixture.
@@ -30,8 +30,10 @@ npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 
 Choose **New brain** from the opening screen and name the knowledge project.
 The setup sheet asks for its working language, AI runtime, and optional
-purpose; Eva stores that profile in `EVA.md`, creates a local Git repository
-and starter brain in `~/Documents/Eva/Brains`, then opens the graph. Select
+purpose; Eva stores that profile in `EVA.md`, creates a starter brain in
+`~/Documents/Eva/Brains`, then opens the graph. Eva uses Git only locally to
+make reviews and undoable history possible; it needs no GitHub account, remote,
+or Git identity. Select
 **Ingest** to add the first source. Select **Query** to ask the maintained
 brain a question; useful answers can be saved as a reviewable analysis page.
 Use **Open brain** to choose from Eva's managed brain library. **Import a
@@ -47,9 +49,11 @@ edits pages, creates tasks, or commits changes.
 
 ## Privacy
 
-Eva copies selected source files into a brain's `raw/` directory and commits
-them there as source of truth. Use a private Git remote for any vault that
-contains personal, proprietary, client, or copyrighted source material.
+Eva keeps every brain on the person's computer by default. It never creates a
+Git remote or pushes sources, pages, or history anywhere. Eva copies selected
+source files into a brain's `raw/` directory and records them in local history
+only. Sharing or backing up a brain is an explicit choice the person makes
+outside Eva.
 
 Dev-only hooks (used for automated verification, no effect in production
 builds): set `VITE_DEV_VAULT=/abs/path/to/vault` to auto-open a vault on
