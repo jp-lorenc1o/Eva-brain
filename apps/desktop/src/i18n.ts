@@ -281,6 +281,7 @@ const chrome = {
   'tool.detail': 'Create source-cited work from the brain that is currently open.', 'tool.other': 'Other tools · {{count}}', 'tool.otherCopy': 'Use any tool with this brain. Eva works only from the brain you have open.', 'tool.focus': 'Topics or focus', 'tool.focusPlaceholder': 'Leave empty to use the whole brain.', 'tool.format': 'Exam format', 'tool.questions': 'Questions', 'tool.run': 'Run {{tool}}', 'tool.result': 'Result', 'tool.primary': 'Primary tool for this brain', 'tool.crossProfile': 'From the {{profile}} profile · uses this open brain', 'tool.none': 'No supporting brain pages were returned for this result.', 'format.mixed': 'Mixed', 'format.multiple-choice': 'Multiple choice', 'format.written': 'Written responses', 'format.short-answer': 'Short answer',
   'reader.empty': 'This page has no readable body yet.', 'reader.done': 'Done', 'reader.todo': 'To do',
   'library.loading': 'Reading your brains…', 'library.empty': 'No brains here yet. Create one or import an existing one.', 'manager.loading': 'Reading your local library…', 'manager.empty': 'No local brains yet. Create or import one to configure it here.',
+  'count.pages': '{{count}} pages', 'count.issues': '{{count}} structural issues', 'count.entries': '{{count}} entries', 'log.newest': 'newest first', 'health.next': 'Next:', 'health.kind.contradiction': 'Contradiction', 'health.kind.provenance': 'Provenance', 'health.kind.stale-claim': 'Stale claim', 'health.kind.coverage-gap': 'Coverage gap', 'health.kind.research-question': 'Research question',
 } as const;
 
 export type ChromeKey = keyof typeof chrome;
@@ -335,7 +336,20 @@ const chromeTranslations: Record<Locale, ChromeDictionary> = {
   },
 };
 
+const chromeCounts: Record<Locale, ChromeDictionary> = {
+  en: {},
+  es: { 'count.pages': '{{count}} páginas', 'count.issues': '{{count}} problemas estructurales', 'count.entries': '{{count}} entradas', 'log.newest': 'más reciente primero', 'health.next': 'Siguiente:', 'health.kind.contradiction': 'Contradicción', 'health.kind.provenance': 'Procedencia', 'health.kind.stale-claim': 'Afirmación desactualizada', 'health.kind.coverage-gap': 'Vacío de cobertura', 'health.kind.research-question': 'Pregunta de investigación' },
+  pt: { 'count.pages': '{{count}} páginas', 'count.issues': '{{count}} problemas estruturais', 'count.entries': '{{count}} entradas', 'log.newest': 'mais recentes primeiro', 'health.next': 'Próximo:', 'health.kind.contradiction': 'Contradição', 'health.kind.provenance': 'Proveniência', 'health.kind.stale-claim': 'Afirmação desatualizada', 'health.kind.coverage-gap': 'Lacuna de cobertura', 'health.kind.research-question': 'Questão de pesquisa' },
+  fr: { 'count.pages': '{{count}} pages', 'count.issues': '{{count}} problèmes structurels', 'count.entries': '{{count}} entrées', 'log.newest': 'plus récent d’abord', 'health.next': 'Suivant :', 'health.kind.contradiction': 'Contradiction', 'health.kind.provenance': 'Provenance', 'health.kind.stale-claim': 'Affirmation obsolète', 'health.kind.coverage-gap': 'Lacune de couverture', 'health.kind.research-question': 'Question de recherche' },
+  de: { 'count.pages': '{{count}} Seiten', 'count.issues': '{{count}} Strukturprobleme', 'count.entries': '{{count}} Einträge', 'log.newest': 'neueste zuerst', 'health.next': 'Nächster Schritt:', 'health.kind.contradiction': 'Widerspruch', 'health.kind.provenance': 'Herkunft', 'health.kind.stale-claim': 'Veraltete Behauptung', 'health.kind.coverage-gap': 'Abdeckungslücke', 'health.kind.research-question': 'Forschungsfrage' },
+  it: { 'count.pages': '{{count}} pagine', 'count.issues': '{{count}} problemi strutturali', 'count.entries': '{{count}} voci', 'log.newest': 'più recenti prima', 'health.next': 'Successivo:', 'health.kind.contradiction': 'Contraddizione', 'health.kind.provenance': 'Provenienza', 'health.kind.stale-claim': 'Affermazione obsoleta', 'health.kind.coverage-gap': 'Lacuna di copertura', 'health.kind.research-question': 'Domanda di ricerca' },
+  ja: { 'count.pages': '{{count}} ページ', 'count.issues': '{{count}} 件の構造上の問題', 'count.entries': '{{count}} 件', 'log.newest': '新しい順', 'health.next': '次:', 'health.kind.contradiction': '矛盾', 'health.kind.provenance': '出典', 'health.kind.stale-claim': '古い主張', 'health.kind.coverage-gap': '網羅性の不足', 'health.kind.research-question': '調査の質問' },
+  ko: { 'count.pages': '{{count}}개 페이지', 'count.issues': '구조 문제 {{count}}개', 'count.entries': '{{count}}개 항목', 'log.newest': '최신순', 'health.next': '다음:', 'health.kind.contradiction': '모순', 'health.kind.provenance': '출처', 'health.kind.stale-claim': '오래된 주장', 'health.kind.coverage-gap': '범위 공백', 'health.kind.research-question': '연구 질문' },
+  'zh-Hans': { 'count.pages': '{{count}} 个页面', 'count.issues': '{{count}} 个结构问题', 'count.entries': '{{count}} 条记录', 'log.newest': '最新在前', 'health.next': '下一步：', 'health.kind.contradiction': '矛盾', 'health.kind.provenance': '来源', 'health.kind.stale-claim': '过时主张', 'health.kind.coverage-gap': '覆盖空白', 'health.kind.research-question': '研究问题' },
+  'zh-Hant': { 'count.pages': '{{count}} 個頁面', 'count.issues': '{{count}} 個結構問題', 'count.entries': '{{count}} 筆記錄', 'log.newest': '最新在前', 'health.next': '下一步：', 'health.kind.contradiction': '矛盾', 'health.kind.provenance': '來源', 'health.kind.stale-claim': '過時主張', 'health.kind.coverage-gap': '覆蓋空白', 'health.kind.research-question': '研究問題' },
+};
+
 export function ui(key: ChromeKey, values: Record<string, string | number> = {}): string {
-  const template = chromeTranslations[activeLocale][key] ?? chrome[key];
+  const template = chromeCounts[activeLocale][key] ?? chromeTranslations[activeLocale][key] ?? chrome[key];
   return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values[name] ?? ''));
 }

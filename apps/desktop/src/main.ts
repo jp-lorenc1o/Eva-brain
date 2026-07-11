@@ -1100,7 +1100,7 @@ async function openVault(root: string): Promise<void> {
   issues = lintVault(vault);
   saveRecents([root, ...getRecents().filter((p) => p !== root)]);
   refreshRecentViews();
-  vaultPathEl.textContent = `${basenameOf(root)} · ${vault.pages.length} pages`;
+  vaultPathEl.textContent = `${basenameOf(root)} · ${ui('count.pages', { count: vault.pages.length })}`;
   vaultPathEl.title = root;
   emptyEl.hidden = true;
   commandEl.hidden = false;
@@ -1764,7 +1764,7 @@ function renderHealthReport(section: HTMLElement): void {
     item.className = `health-finding health-${healthKindClass(finding.kind)}`;
     const kind = document.createElement('span');
     kind.className = 'health-kind';
-    kind.textContent = finding.kind.replace(/-/g, ' ');
+    kind.textContent = ui(`health.kind.${finding.kind}` as ChromeKey);
     const title = document.createElement('h3');
     title.textContent = finding.title;
     const detail = document.createElement('p');
@@ -1789,7 +1789,7 @@ function renderHealthReport(section: HTMLElement): void {
     if (finding.nextStep) {
       const next = document.createElement('p');
       next.className = 'health-next';
-      next.textContent = `Next: ${finding.nextStep}`;
+      next.textContent = `${ui('health.next')} ${finding.nextStep}`;
       item.appendChild(next);
     }
     section.appendChild(item);
@@ -1826,7 +1826,7 @@ async function runHealthCheck(): Promise<void> {
 
 function renderLintPanel(): void {
   if (!vault) return;
-  lintSubEl.textContent = `${issues.length} structural issue${issues.length === 1 ? '' : 's'} · ${vault.pages.length} pages`;
+  lintSubEl.textContent = `${ui('count.issues', { count: issues.length })} · ${ui('count.pages', { count: vault.pages.length })}`;
   lintBodyEl.innerHTML = '';
 
   const structural = document.createElement('p');
@@ -1927,13 +1927,12 @@ function renderLogPanel(): void {
   const entries = parseLog(logRaw);
   if (entries === null) {
     logSubEl.textContent = 'log.md · unstructured';
-    const raw = document.createElement('pre');
-    raw.className = 'log-raw';
-    raw.textContent = logRaw.trim();
+    const raw = renderReaderBody(logRaw.trim());
+    raw.classList.add('log-reader');
     logBodyEl.appendChild(raw);
     return;
   }
-  logSubEl.textContent = `log.md · ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} · newest first`;
+  logSubEl.textContent = `log.md · ${ui('count.entries', { count: entries.length })} · ${ui('log.newest')}`;
   for (const entry of [...entries].reverse()) {
     const item = document.createElement('div');
     item.className = 'log-entry';
@@ -1951,10 +1950,9 @@ function renderLogPanel(): void {
     }
     const title = document.createElement('span');
     title.className = 'log-title';
-    title.textContent = entry.title;
-    const body = document.createElement('p');
-    body.className = 'log-body';
-    body.textContent = entry.body.trim();
+    appendReaderInline(title, entry.title);
+    const body = renderReaderBody(entry.body.trim());
+    body.classList.add('log-body');
     item.append(head, title);
     if (entry.body.trim()) item.appendChild(body);
     logBodyEl.appendChild(item);
