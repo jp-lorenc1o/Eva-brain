@@ -1114,14 +1114,16 @@ function renderLogPanel(): void {
 
 /* Ingest ---------------------------------------------------------------------
    The webview's whole job here: pick sources, invoke Rust, render events. */
-function setIngestStatus(text: string | null, working: boolean): void {
+function setIngestStatus(text: string | null, working: boolean, failed = false): void {
   if (!text) {
     ingestStatusEl.hidden = true;
     return;
   }
   ingestStatusEl.hidden = false;
   ingestStatusEl.textContent = text;
+  ingestStatusEl.title = text;
   ingestStatusEl.classList.toggle('working', working);
+  ingestStatusEl.classList.toggle('failed', failed);
 }
 
 function applyAgentActive(): void {
@@ -1394,6 +1396,7 @@ interface JobInfo {
   id: number;
   sourceName: string;
   status: string;
+  error?: string;
 }
 
 void listen('ingest:state', (event) => {
@@ -1407,7 +1410,15 @@ void listen('ingest:state', (event) => {
     setIngestStatus(`${p.queue.length} queued — waiting on review`, false);
   } else if (p.done.length > 0) {
     const merged = p.done.filter((j) => j.status === 'merged').length;
-    setIngestStatus(`${merged}/${p.done.length} sources ingested`, false);
+    const failed = p.done.filter((j) => j.status === 'failed');
+    if (failed.length > 0) {
+      const latest = failed.at(-1)!;
+      const source = latest.sourceName || 'a source';
+      const error = latest.error || 'The agent could not process this source.';
+      setIngestStatus(`Ingest stopped at ${source}: ${error}`, false, true);
+    } else {
+      setIngestStatus(`${merged}/${p.done.length} sources ingested`, false);
+    }
   }
   opIngestEl.classList.toggle('active', p.current !== null);
   forwardDev('state', p);
@@ -1453,7 +1464,7 @@ void listen('ingest:review', (event) => {
 void listen('ingest:failed', (event) => {
   const p = event.payload as { jobId: number; source: string; error: string };
   clearAgentActive();
-  setIngestStatus(`failed: ${p.source} — ${p.error}`, false);
+  setIngestStatus(`Ingest stopped at ${p.source}: ${p.error}`, false, true);
   forwardDev('failed', p);
 });
 

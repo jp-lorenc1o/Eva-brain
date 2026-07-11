@@ -82,6 +82,7 @@ pub struct Job {
     pub source: String,
     pub source_name: String,
     pub status: String, // queued | running | merged | held | rejected | failed
+    pub error: Option<String>,
 }
 
 pub struct Held {
@@ -1543,6 +1544,7 @@ fn worker(app: AppHandle) {
             }
             Err(e) => {
                 done_job.status = "failed".into();
+                done_job.error = Some(e.clone());
                 let _ = app.emit(
                     "ingest:failed",
                     serde_json::json!({"jobId": job.id, "source": job.source_name, "error": e}),
@@ -1892,6 +1894,7 @@ pub fn ingest_enqueue(
             source: raw.join(&name).to_string_lossy().to_string(),
             source_name: name,
             status: "queued".into(),
+            error: None,
         });
     }
     emit_state(&app, &st);

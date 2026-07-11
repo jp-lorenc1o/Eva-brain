@@ -379,6 +379,15 @@ body::after {
   color: var(--red);
 }
 
+#ingest-status.failed {
+  max-width: min(56vw, 680px);
+  color: var(--red);
+  letter-spacing: 0.02em;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .soon {
   font-family: var(--font-data);
   font-size: 8.5px;
