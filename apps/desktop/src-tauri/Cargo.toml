@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "Eva desktop app"
 edition = "2021"
 
+[[bin]]
+name = "Eva"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
