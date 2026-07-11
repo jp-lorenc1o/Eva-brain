@@ -110,7 +110,7 @@ const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElemen
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const AMBIENT_ALPHA = 0.012;
+const AMBIENT_ALPHA = 0.0035;
 const PANEL_MARGIN = 28;
 const INFRA_FILES = new Set(['log.md', 'eva.md', 'agents.md', 'claude.md']);
 
@@ -277,16 +277,14 @@ function forceViewportBounds() {
   const force = () => {
     for (const node of nodes) {
       if (isHomeNode(node)) continue;
+      // A pin is explicit human placement. Only constrain the automatic
+      // layout, so every node remains freely draggable.
+      if (node.fx != null || node.fy != null) continue;
       const safe = keepNodeInViewport(node.x ?? 0, node.y ?? 0, nodeCollisionRadius(node));
-      if (node.fx != null || node.fy != null) {
-        node.fx = safe.x;
-        node.fy = safe.y;
-      } else {
-        if (safe.x !== node.x) node.vx = (node.vx ?? 0) * 0.35;
-        if (safe.y !== node.y) node.vy = (node.vy ?? 0) * 0.35;
-        node.x = safe.x;
-        node.y = safe.y;
-      }
+      if (safe.x !== node.x) node.vx = (node.vx ?? 0) * 0.35;
+      if (safe.y !== node.y) node.vy = (node.vy ?? 0) * 0.35;
+      node.x = safe.x;
+      node.y = safe.y;
     }
   };
   force.initialize = (next: SimNode[]) => {
@@ -810,9 +808,8 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
     // unreachable: if it was dropped inside a panel, move it (pin included)
     // to the nearest point just outside.
     const nudged = nudgeOutside(node.fx ?? node.x ?? 0, node.fy ?? node.y ?? 0);
-    const safe = keepNodeInViewport(nudged.x, nudged.y, nodeCollisionRadius(node));
-    node.fx = safe.x;
-    node.fy = safe.y;
+    node.fx = nudged.x;
+    node.fy = nudged.y;
     g.classList.add('pinned');
     simulation?.alphaTarget(reducedMotion ? 0 : AMBIENT_ALPHA);
   };
@@ -830,7 +827,7 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
     }
     node.fx = node.x;
     node.fy = node.y;
-    simulation?.alphaTarget(0.3).restart();
+    simulation?.alphaTarget(0.12).restart();
   });
 
   g.addEventListener('pointermove', (event) => {

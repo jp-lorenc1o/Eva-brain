@@ -293,17 +293,17 @@ body::after {
 }
 
 /* Toolbar ------------------------------------------------------------------
-   One pill for the whole operating surface: vault on the left, the four
-   llm-wiki operations on the right. Unbuilt operations wear a "soon" tag —
-   present, honest, not broken. */
+   A full-width command rail keeps the brain identity on the left and all
+   operations in one calm, stable line across the page. */
 #command {
   top: 16px;
   left: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 8px 12px 8px 8px;
-  border-radius: 999px;
+  border-radius: 14px;
 }
 
 .vault-cluster {
@@ -365,6 +365,7 @@ body::after {
 }
 
 #ingest-status {
+  margin-left: auto;
   font-family: var(--font-data);
   font-size: 10px;
   letter-spacing: 0.05em;
