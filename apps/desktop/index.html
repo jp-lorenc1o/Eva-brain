@@ -33,16 +33,16 @@
           Ingest
         </button>
         <button id="op-query" class="op" title="Ask the current vault a cited question">Query</button>
-        <button id="op-lint" class="op" aria-pressed="false">Lint</button>
+        <button id="op-lint" class="op" aria-pressed="false">Health</button>
         <button id="op-log" class="op" aria-pressed="false">Log</button>
       </nav>
       <span id="ingest-status" hidden></span>
     </header>
     <div id="recent-pop" class="glass" hidden></div>
-    <aside id="lint-panel" class="glass dock-left" hidden aria-label="Vault lint">
-      <button class="panel-close" data-panel="lint" aria-label="Close lint">&#10005;</button>
+    <aside id="lint-panel" class="glass dock-left" hidden aria-label="Vault health">
+      <button class="panel-close" data-panel="lint" aria-label="Close health check">&#10005;</button>
       <div class="panel-head">
-        <h2>Lint</h2>
+        <h2>Health</h2>
         <p class="panel-sub" id="lint-sub"></p>
       </div>
       <div id="lint-body"></div>

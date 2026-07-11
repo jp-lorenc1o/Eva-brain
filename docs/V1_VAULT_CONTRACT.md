@@ -64,9 +64,11 @@ an isolated Git worktree; the user must explicitly review and merge it.
 
 The deterministic V1 gate reports broken links, non-index orphans, missing
 titles, missing types, and summaries with no valid `raw/` source. Agents can
-additionally report semantic maintenance suggestions (conflicts, stale claims,
-missing concepts), but those are advisory until Eva implements a reviewable
-semantic lint result format.
+additionally run Eva's read-only **Health Check**. It returns evidence-backed
+advisory findings for contradictions, weak provenance, stale claims, coverage
+gaps, and research questions. Health Check never edits, creates a page, or
+commits; acting on a finding remains an explicit human-led ingest, query, or
+analysis decision.
 
 ## Runtime boundary
 

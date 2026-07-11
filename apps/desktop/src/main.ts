@@ -117,6 +117,9 @@ let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let newVaultParent: string | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
+let healthReport: HealthReport | null = null;
+let healthError: string | null = null;
+let healthCheckRunning = false;
 const agentActive = new Set<string>();
 
 /* Panel exclusion zones ------------------------------------------------------
@@ -407,6 +410,9 @@ async function createNewVault(): Promise<void> {
 
 async function openVault(root: string): Promise<void> {
   currentVault = root;
+  healthReport = null;
+  healthError = null;
+  healthCheckRunning = false;
   // Bootstrap the standard Eva infrastructure into agent-managed vaults (their
   // own git root); read-only viewing of other folders is left untouched.
   await invoke('ensure_schema', { vault: root }).catch(() => false);
@@ -736,10 +742,136 @@ function toggleSidePanel(which: 'lint' | 'log'): void {
   updateExclusions();
 }
 
+interface HealthFinding {
+  kind: string;
+  title: string;
+  detail: string;
+  pages: string[];
+  nextStep: string;
+}
+
+interface HealthReport {
+  summary: string;
+  findings: HealthFinding[];
+}
+
+function healthKindClass(kind: string): string {
+  switch (kind) {
+    case 'contradiction':
+      return 'contradiction';
+    case 'provenance':
+      return 'provenance';
+    case 'stale-claim':
+      return 'stale';
+    case 'coverage-gap':
+      return 'coverage';
+    default:
+      return 'research';
+  }
+}
+
+function renderHealthReport(section: HTMLElement): void {
+  if (healthCheckRunning) {
+    const pending = document.createElement('p');
+    pending.className = 'health-pending';
+    pending.textContent = 'Reading the wiki for maintenance signals…';
+    section.appendChild(pending);
+    return;
+  }
+  if (healthError) {
+    const error = document.createElement('p');
+    error.className = 'health-error';
+    error.textContent = healthError;
+    section.appendChild(error);
+    return;
+  }
+  if (!healthReport) return;
+
+  const summary = document.createElement('p');
+  summary.className = 'health-summary';
+  summary.textContent = healthReport.summary;
+  section.appendChild(summary);
+  if (healthReport.findings.length === 0) {
+    const clean = document.createElement('p');
+    clean.className = 'health-clean';
+    clean.textContent = 'No advisory maintenance work identified.';
+    section.appendChild(clean);
+    return;
+  }
+  for (const finding of healthReport.findings) {
+    const item = document.createElement('article');
+    item.className = `health-finding health-${healthKindClass(finding.kind)}`;
+    const kind = document.createElement('span');
+    kind.className = 'health-kind';
+    kind.textContent = finding.kind.replace(/-/g, ' ');
+    const title = document.createElement('h3');
+    title.textContent = finding.title;
+    const detail = document.createElement('p');
+    detail.className = 'health-detail';
+    detail.textContent = finding.detail;
+    item.append(kind, title, detail);
+    if (finding.pages.length > 0) {
+      const pages = document.createElement('div');
+      pages.className = 'health-pages';
+      for (const pageId of finding.pages) {
+        const page = document.createElement('button');
+        page.type = 'button';
+        page.textContent = pageId;
+        page.disabled = !vault?.byId.has(pageId);
+        page.addEventListener('click', () => {
+          if (vault?.byId.has(pageId)) select(pageId);
+        });
+        pages.appendChild(page);
+      }
+      item.appendChild(pages);
+    }
+    if (finding.nextStep) {
+      const next = document.createElement('p');
+      next.className = 'health-next';
+      next.textContent = `Next: ${finding.nextStep}`;
+      item.appendChild(next);
+    }
+    section.appendChild(item);
+  }
+}
+
+async function runHealthCheck(): Promise<void> {
+  if (!currentVault || healthCheckRunning) return;
+  const vaultPath = currentVault;
+  healthCheckRunning = true;
+  healthError = null;
+  renderLintPanel();
+  setIngestStatus('Checking vault health…', true);
+  try {
+    const report = await invoke<HealthReport>('health_check_run', { vault: vaultPath });
+    if (currentVault !== vaultPath) return;
+    healthReport = report;
+    setIngestStatus(
+      `${report.findings.length} advisory finding${report.findings.length === 1 ? '' : 's'}`,
+      false,
+    );
+  } catch (error) {
+    if (currentVault === vaultPath) {
+      healthError = String(error);
+      setIngestStatus('Health check could not run', false);
+    }
+  } finally {
+    if (currentVault === vaultPath) {
+      healthCheckRunning = false;
+      renderLintPanel();
+    }
+  }
+}
+
 function renderLintPanel(): void {
   if (!vault) return;
-  lintSubEl.textContent = `${issues.length} issue${issues.length === 1 ? '' : 's'} · ${vault.pages.length} pages · deterministic rules`;
+  lintSubEl.textContent = `${issues.length} structural issue${issues.length === 1 ? '' : 's'} · ${vault.pages.length} pages`;
   lintBodyEl.innerHTML = '';
+
+  const structural = document.createElement('p');
+  structural.className = 'recent-label';
+  structural.textContent = 'Structural check';
+  lintBodyEl.appendChild(structural);
 
   if (issues.length === 0) {
     const clean = document.createElement('p');
@@ -769,35 +901,23 @@ function renderLintPanel(): void {
     }
   }
 
-  // The agent-backed checks aren't built yet; they keep their slot so the
-  // panel doesn't need a redesign when they arrive.
-  const agent = document.createElement('div');
-  agent.className = 'agent-section';
-  const agentLabel = document.createElement('p');
-  agentLabel.className = 'recent-label';
-  agentLabel.textContent = 'Requires agent';
-  agent.appendChild(agentLabel);
-  const checks: Array<[string, string]> = [
-    ['Contradictions', 'Claims that disagree between pages.'],
-    ['Coverage gaps', "Questions the vault can't answer yet."],
-    ['Stale claims', 'Facts likely to have aged out of date.'],
-  ];
-  for (const [name, desc] of checks) {
-    const row = document.createElement('div');
-    row.className = 'agent-check';
-    const title = document.createElement('span');
-    title.className = 'agent-check-name';
-    title.textContent = name;
-    const soon = document.createElement('span');
-    soon.className = 'soon';
-    soon.textContent = 'soon';
-    const body = document.createElement('p');
-    body.className = 'agent-check-desc';
-    body.textContent = desc;
-    row.append(title, soon, body);
-    agent.appendChild(row);
-  }
-  lintBodyEl.appendChild(agent);
+  const health = document.createElement('section');
+  health.className = 'health-section';
+  const healthLabel = document.createElement('p');
+  healthLabel.className = 'recent-label';
+  healthLabel.textContent = 'Advisory health check';
+  const intro = document.createElement('p');
+  intro.className = 'health-intro';
+  intro.textContent = 'Read-only review for contradictions, weak provenance, stale claims, and research gaps.';
+  const run = document.createElement('button');
+  run.type = 'button';
+  run.className = 'btn-stamp aux';
+  run.textContent = healthCheckRunning ? 'Checking…' : healthReport ? 'Run again' : 'Run health check';
+  run.disabled = healthCheckRunning;
+  run.addEventListener('click', () => void runHealthCheck());
+  health.append(healthLabel, intro, run);
+  renderHealthReport(health);
+  lintBodyEl.appendChild(health);
 }
 
 interface LogEntry {

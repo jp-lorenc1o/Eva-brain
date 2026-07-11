@@ -17,6 +17,7 @@ fn main() {
             ingest::ensure_schema,
             ingest::vault_create,
             ingest::query_run,
+            ingest::health_check_run,
             ingest::query_save,
             ingest::query_decide
         ])
