@@ -13,7 +13,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             ingest::ingest_enqueue,
             ingest::ingest_decide,
-            ingest::ensure_schema
+            ingest::ensure_schema,
+            ingest::vault_create
         ])
         .run(tauri::generate_context!())
         .expect("error while running eva-wiki");

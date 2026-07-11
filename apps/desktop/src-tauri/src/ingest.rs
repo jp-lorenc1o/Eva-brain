@@ -109,6 +109,100 @@ fn require_vault_repo(vault: &Path) -> Result<PathBuf, String> {
     Ok(root)
 }
 
+fn vault_dir_name(name: &str) -> Result<&str, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("enter a vault name".into());
+    }
+    if name.len() > 80 {
+        return Err("vault names must be 80 characters or fewer".into());
+    }
+    if matches!(name, "." | "..")
+        || name.contains(['/', '\\'])
+        || name.chars().any(char::is_control)
+    {
+        return Err("use a single folder name, without slashes".into());
+    }
+    Ok(name)
+}
+
+/// Write only missing Eva infrastructure, then commit exactly those files.
+/// Keeping this separate from the Tauri command lets both a newly-created
+/// vault and a pre-existing Git-root vault receive the same V1 baseline.
+fn bootstrap_vault(root: &Path) -> Result<bool, String> {
+    let mut staged: Vec<&str> = vec!["add"];
+    if !root.join("EVA.md").exists() {
+        fs::write(root.join("EVA.md"), EVA_MD).map_err(|e| e.to_string())?;
+        staged.push("EVA.md");
+    }
+    if !root.join("AGENTS.md").exists() {
+        fs::write(root.join("AGENTS.md"), AGENTS_MD).map_err(|e| e.to_string())?;
+        staged.push("AGENTS.md");
+    }
+    if !root.join("CLAUDE.md").exists() {
+        fs::write(root.join("CLAUDE.md"), CLAUDE_MD).map_err(|e| e.to_string())?;
+        staged.push("CLAUDE.md");
+    }
+    if !root.join("index.md").exists() {
+        fs::write(root.join("index.md"), INDEX_MD).map_err(|e| e.to_string())?;
+        staged.push("index.md");
+    }
+    if !root.join("log.md").exists() {
+        fs::write(root.join("log.md"), LOG_MD).map_err(|e| e.to_string())?;
+        staged.push("log.md");
+    }
+    fs::create_dir_all(root.join("raw")).map_err(|e| e.to_string())?;
+    if staged.len() == 1 {
+        return Ok(false);
+    }
+    git(root, &staged)?;
+    git(root, &["commit", "-m", "schema: bootstrap Eva vault"])?;
+    Ok(true)
+}
+
+fn create_vault(parent: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = vault_dir_name(name)?;
+    let parent = parent
+        .canonicalize()
+        .map_err(|e| format!("vault location: {e}"))?;
+    if !parent.is_dir() {
+        return Err("choose an existing folder for the new vault".into());
+    }
+    let root = parent.join(name);
+    if root.exists() {
+        return Err(format!("a folder named \"{name}\" already exists there"));
+    }
+    fs::create_dir(&root).map_err(|e| format!("create vault folder: {e}"))?;
+
+    match Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(&root)
+        .output()
+        .map_err(|e| format!("start Git repository: {e}"))
+    {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            let _ = fs::remove_dir_all(&root);
+            return Err(format!(
+                "start Git repository: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(&root);
+            return Err(error);
+        }
+    }
+
+    if let Err(error) = bootstrap_vault(&root) {
+        // `root` was created by this command, so cleanup cannot touch an
+        // existing vault if Git or the initial commit is unavailable.
+        let _ = fs::remove_dir_all(&root);
+        return Err(format!("bootstrap new vault: {error}"));
+    }
+    Ok(root)
+}
+
 fn tools_dir() -> Result<PathBuf, String> {
     if let Ok(dir) = std::env::var("EVA_TOOLS_DIR") {
         return Ok(PathBuf::from(dir));
@@ -488,34 +582,30 @@ pub fn ensure_schema(vault: String) -> Result<bool, String> {
         Ok(r) => r,
         Err(_) => return Ok(false), // not an agent-managed vault: leave untouched
     };
-    let mut staged: Vec<&str> = vec!["add"];
-    if !root.join("EVA.md").exists() {
-        fs::write(root.join("EVA.md"), EVA_MD).map_err(|e| e.to_string())?;
-        staged.push("EVA.md");
+    bootstrap_vault(&root)
+}
+
+#[tauri::command]
+pub fn vault_create(parent: String, name: String) -> Result<String, String> {
+    let root = create_vault(Path::new(&parent), &name)?;
+    Ok(root.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vault_dir_name;
+
+    #[test]
+    fn accepts_a_single_human_readable_folder_name() {
+        assert_eq!(vault_dir_name("  Research atlas  ").unwrap(), "Research atlas");
     }
-    if !root.join("AGENTS.md").exists() {
-        fs::write(root.join("AGENTS.md"), AGENTS_MD).map_err(|e| e.to_string())?;
-        staged.push("AGENTS.md");
+
+    #[test]
+    fn rejects_path_like_or_empty_vault_names() {
+        for name in ["", " ", ".", "..", "research/atlas", "research\\atlas"] {
+            assert!(vault_dir_name(name).is_err(), "{name:?} should be rejected");
+        }
     }
-    if !root.join("CLAUDE.md").exists() {
-        fs::write(root.join("CLAUDE.md"), CLAUDE_MD).map_err(|e| e.to_string())?;
-        staged.push("CLAUDE.md");
-    }
-    if !root.join("index.md").exists() {
-        fs::write(root.join("index.md"), INDEX_MD).map_err(|e| e.to_string())?;
-        staged.push("index.md");
-    }
-    if !root.join("log.md").exists() {
-        fs::write(root.join("log.md"), LOG_MD).map_err(|e| e.to_string())?;
-        staged.push("log.md");
-    }
-    fs::create_dir_all(root.join("raw")).map_err(|e| e.to_string())?;
-    if staged.len() == 1 {
-        return Ok(false);
-    }
-    git(&root, &staged)?;
-    git(&root, &["commit", "-m", "schema: bootstrap Eva vault"])?;
-    Ok(true)
 }
 
 #[tauri::command]

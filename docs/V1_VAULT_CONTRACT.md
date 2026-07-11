@@ -22,7 +22,9 @@ semantics are defined in [`schema/EVA.md`](../schema/EVA.md). The portable
 agent contract is `EVA.md`; `AGENTS.md` and `CLAUDE.md` merely point compatible
 agents to it.
 
-The app creates missing infrastructure for a Git-root vault:
+The app's **New vault** flow creates a folder, initializes a local Git
+repository on `main`, and writes the initial infrastructure. Opening an
+existing Git-root vault writes only missing infrastructure files:
 
 - `EVA.md`, `AGENTS.md`, and `CLAUDE.md`
 - `index.md` and `log.md`

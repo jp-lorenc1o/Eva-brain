@@ -129,6 +129,17 @@ body::after {
   color: var(--paper);
 }
 
+.btn-stamp:disabled {
+  color: rgba(117, 114, 110, 0.5);
+  border-color: rgba(117, 114, 110, 0.35);
+  cursor: default;
+}
+
+.btn-stamp:disabled:hover {
+  background: transparent;
+  color: rgba(117, 114, 110, 0.5);
+}
+
 .btn-stamp.aux {
   padding: 7px 9px;
 }
@@ -165,6 +176,12 @@ body::after {
   font-size: 13.5px;
   line-height: 1.55;
   color: #45443c;
+}
+
+.empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 #recent {
@@ -512,6 +529,109 @@ body::after {
   overflow-y: auto;
   padding: 20px 24px;
   z-index: 3;
+}
+
+/* New vault: an opening folio, concise enough that the choice is about the
+   knowledge project rather than a configuration form. The location is shown
+   as a ledger line — it is the one irreversible choice in this small ritual. */
+#new-vault {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 48px));
+  padding: 22px 24px 20px;
+  z-index: 3;
+}
+
+#new-vault .panel-head h2 {
+  margin-right: 0;
+}
+
+.form-kicker {
+  margin: 0 0 5px;
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.form-copy {
+  margin: 8px 0 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #45443c;
+}
+
+.form-label {
+  display: block;
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.text-input {
+  display: block;
+  width: 100%;
+  margin: 6px 0 16px;
+  padding: 9px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(255, 255, 253, 0.56);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.text-input::placeholder {
+  color: rgba(117, 114, 110, 0.62);
+}
+
+.text-input:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(203, 24, 29, 0.08);
+}
+
+.location-field {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.location-value {
+  display: block;
+  max-width: 270px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--font-data);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-error {
+  min-height: 17px;
+  margin: 10px 0 0;
+  color: var(--red);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.new-vault-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 #review-issues {

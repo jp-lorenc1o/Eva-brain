@@ -1,7 +1,6 @@
 ---
 title: Home
 type: index
-updated: 2026-07-11
 ---
 
 # Knowledge map

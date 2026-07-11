@@ -26,6 +26,13 @@ npm test             # wiki-lib unit tests (vitest)
 npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ```
 
+## First vault
+
+Choose **New vault** from the opening screen, select a parent folder, and name
+the knowledge project. Eva creates a local Git repository, writes the V1
+contract and starter wiki, then opens the graph. Select **Ingest** to add the
+first source. Use **Open vault** for an existing Markdown vault.
+
 ## Privacy
 
 Eva copies selected source files into a vault's `raw/` directory and commits

@@ -80,6 +80,12 @@ const reviewEl = document.getElementById('review') as HTMLElement;
 const reviewSubEl = document.getElementById('review-sub') as HTMLElement;
 const reviewIssuesEl = document.getElementById('review-issues') as HTMLElement;
 const reviewPatchEl = document.getElementById('review-patch') as HTMLElement;
+const newVaultEl = document.getElementById('new-vault') as HTMLElement;
+const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
+const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
+const newVaultLocationEl = document.getElementById('new-vault-location') as HTMLElement;
+const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElement;
+const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const AMBIENT_ALPHA = 0.012;
@@ -96,6 +102,7 @@ let refreshPositions: (() => void) | null = null;
 let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
 let reviewJobId: number | null = null;
+let newVaultParent: string | null = null;
 const agentActive = new Set<string>();
 
 /* Panel exclusion zones ------------------------------------------------------
@@ -311,11 +318,84 @@ async function chooseVault(): Promise<void> {
   if (typeof dir === 'string') await openVault(dir);
 }
 
+function setNewVaultError(message: string | null): void {
+  newVaultErrorEl.hidden = !message;
+  newVaultErrorEl.textContent = message ?? '';
+}
+
+function validVaultName(name: string): boolean {
+  const trimmed = name.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 80 &&
+    trimmed !== '.' &&
+    trimmed !== '..' &&
+    !/[\\/\u0000-\u001f]/.test(trimmed)
+  );
+}
+
+function updateNewVaultCreateState(): void {
+  newVaultCreateEl.disabled = !newVaultParent || !validVaultName(newVaultNameEl.value);
+}
+
+function closeNewVault(): void {
+  newVaultEl.hidden = true;
+  newVaultParent = null;
+  newVaultNameEl.value = '';
+  newVaultLocationEl.textContent = 'Choose a parent folder';
+  newVaultLocationEl.removeAttribute('title');
+  setNewVaultError(null);
+  updateNewVaultCreateState();
+  updateExclusions();
+}
+
+function showNewVault(): void {
+  newVaultEl.hidden = false;
+  newVaultParent = null;
+  newVaultNameEl.value = '';
+  newVaultLocationEl.textContent = 'Choose a parent folder';
+  newVaultLocationEl.removeAttribute('title');
+  setNewVaultError(null);
+  updateNewVaultCreateState();
+  updateExclusions();
+  window.setTimeout(() => newVaultNameEl.focus(), 0);
+}
+
+async function chooseNewVaultLocation(): Promise<void> {
+  const parent = await open({ directory: true, title: 'Choose a location for the new vault' });
+  if (typeof parent !== 'string') return;
+  newVaultParent = parent;
+  newVaultLocationEl.textContent = parent;
+  newVaultLocationEl.title = parent;
+  setNewVaultError(null);
+  updateNewVaultCreateState();
+}
+
+async function createNewVault(): Promise<void> {
+  const name = newVaultNameEl.value.trim();
+  if (!newVaultParent || !validVaultName(name)) {
+    setNewVaultError('Choose a location and enter a single folder name.');
+    updateNewVaultCreateState();
+    return;
+  }
+  newVaultCreateEl.disabled = true;
+  setNewVaultError(null);
+  try {
+    const root = await invoke<string>('vault_create', { parent: newVaultParent, name });
+    closeNewVault();
+    await openVault(root);
+    setIngestStatus('Vault created · add your first source with Ingest', false);
+  } catch (error) {
+    setNewVaultError(String(error));
+    updateNewVaultCreateState();
+  }
+}
+
 async function openVault(root: string): Promise<void> {
   currentVault = root;
   // Bootstrap the standard Eva infrastructure into agent-managed vaults (their
   // own git root); read-only viewing of other folders is left untouched.
-  void invoke('ensure_schema', { vault: root }).catch(() => {});
+  await invoke('ensure_schema', { vault: root }).catch(() => false);
   const rootEntries = await readDir(root);
   const logName = rootEntries.find((e) => e.isFile && e.name.toLowerCase() === 'log.md')?.name;
   logRaw = logName ? await readTextFile(`${root}/${logName}`) : null;
@@ -961,6 +1041,18 @@ void listen('ingest:rejected', async (event) => {
 /* Wiring -------------------------------------------------------------------- */
 document.getElementById('open-vault')!.addEventListener('click', () => void chooseVault());
 document.getElementById('empty-open')!.addEventListener('click', () => void chooseVault());
+document.getElementById('new-vault-button')!.addEventListener('click', showNewVault);
+document.getElementById('empty-new')!.addEventListener('click', showNewVault);
+document.getElementById('new-vault-location-button')!.addEventListener('click', () => void chooseNewVaultLocation());
+document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
+newVaultNameEl.addEventListener('input', () => {
+  setNewVaultError(null);
+  updateNewVaultCreateState();
+});
+newVaultFormEl.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void createNewVault();
+});
 document.getElementById('detail-close')!.addEventListener('click', deselect);
 opIngestEl.addEventListener('click', () => void startIngest());
 opLintEl.addEventListener('click', () => toggleSidePanel('lint'));
@@ -990,6 +1082,10 @@ document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   // The review panel requires an explicit accept/reject — Escape skips it.
   if (!reviewEl.hidden) return;
+  if (!newVaultEl.hidden) {
+    closeNewVault();
+    return;
+  }
   if (!recentPopEl.hidden) {
     recentPopEl.hidden = true;
     updateExclusions();

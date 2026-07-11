@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: pick a vault folder and read markdown files under the user's home directory.",
+  "description": "Main window: choose or create a local Eva vault and read its markdown pages under the user's home directory.",
   "windows": ["main"],
   "permissions": [
     "core:default",
