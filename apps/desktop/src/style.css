@@ -872,10 +872,34 @@ body.operation-modal-open #ingest-status {
 }
 
 .query-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-family: var(--font-data);
   font-size: 10px;
   letter-spacing: 0.05em;
   color: var(--red);
+}
+
+.query-status::before {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid rgba(203, 24, 29, 0.28);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  content: '';
+  animation: querywork 850ms linear infinite;
+}
+
+@keyframes querywork {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+#query-panel.is-processing .query-input {
+  background: rgba(236, 235, 225, 0.46);
+  cursor: default;
 }
 
 #query-result {
@@ -1484,6 +1508,10 @@ line.edge.lit {
 /* Motion discipline --------------------------------------------------------
    The graph's ambient drift is gated in main.ts via the same media query. */
 @media (prefers-reduced-motion: reduce) {
+  .query-status::before {
+    animation: none;
+  }
+
   .node.selected circle.ring {
     animation: none;
   }

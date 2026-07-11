@@ -1305,9 +1305,11 @@ function setQueryError(message: string | null): void {
 
 function setQueryRunning(running: boolean, label?: string): void {
   querySubmitEl.disabled = running;
-  queryQuestionEl.disabled = running;
+  queryQuestionEl.readOnly = running;
+  queryPanelEl.classList.toggle('is-processing', running);
   queryStatusEl.hidden = !running;
-  queryStatusEl.textContent = running ? label ?? 'Reading the brain…' : '';
+  queryStatusEl.textContent = running ? label ?? 'Eva is searching the brain and tracing sources…' : '';
+  querySubmitEl.textContent = running ? 'Processing' : 'Ask brain';
   opQueryEl.classList.toggle('active', running);
 }
 

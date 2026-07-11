@@ -1614,20 +1614,28 @@ pub fn brain_import(source: String) -> Result<BrainEntry, String> {
 }
 
 #[tauri::command]
-pub fn query_run(vault: String, question: String) -> Result<QueryAnswer, String> {
-    let root = require_vault_repo(Path::new(&vault))?;
-    let question = query_text(&question)?;
-    let runtime = runtime_for_vault(&root)?;
-    ensure_agent_available(runtime)?;
-    drive_query_agent(&root, question, runtime)
+pub async fn query_run(vault: String, question: String) -> Result<QueryAnswer, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = require_vault_repo(Path::new(&vault))?;
+        let question = query_text(&question)?;
+        let runtime = runtime_for_vault(&root)?;
+        ensure_agent_available(runtime)?;
+        drive_query_agent(&root, question, runtime)
+    })
+    .await
+    .map_err(|error| format!("query task: {error}"))?
 }
 
 #[tauri::command]
-pub fn health_check_run(vault: String) -> Result<HealthReport, String> {
-    let root = require_vault_repo(Path::new(&vault))?;
-    let runtime = runtime_for_vault(&root)?;
-    ensure_agent_available(runtime)?;
-    drive_health_agent(&root, runtime)
+pub async fn health_check_run(vault: String) -> Result<HealthReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = require_vault_repo(Path::new(&vault))?;
+        let runtime = runtime_for_vault(&root)?;
+        ensure_agent_available(runtime)?;
+        drive_health_agent(&root, runtime)
+    })
+    .await
+    .map_err(|error| format!("health check task: {error}"))?
 }
 
 #[tauri::command]
