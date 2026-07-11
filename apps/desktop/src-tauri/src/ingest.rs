@@ -1005,8 +1005,6 @@ fn run_codex_agent(
             "never",
             "--sandbox",
             sandbox,
-            "--ask-for-approval",
-            "never",
             "-C",
             &vault.to_string_lossy(),
             "--output-last-message",
