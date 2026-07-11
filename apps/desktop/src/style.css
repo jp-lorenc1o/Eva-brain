@@ -1012,7 +1012,7 @@ body.operation-modal-open #ingest-status {
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   padding: 22px 24px 20px;
-  z-index: 3;
+  z-index: 4;
 }
 
 #brain-library .panel-head h2 {

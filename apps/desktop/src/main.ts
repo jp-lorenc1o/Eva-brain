@@ -1041,7 +1041,7 @@ function closeNewVault(): void {
   newVaultPurposeEl.value = '';
   setNewVaultError(null);
   updateNewVaultCreateState();
-  updateExclusions();
+  syncOperationModal();
 }
 
 function showNewVault(): void {
@@ -1054,7 +1054,7 @@ function showNewVault(): void {
   newVaultPurposeEl.value = '';
   setNewVaultError(null);
   updateNewVaultCreateState();
-  updateExclusions();
+  syncOperationModal();
   window.setTimeout(() => newVaultNameEl.focus(), 0);
 }
 
@@ -1677,7 +1677,7 @@ function syncOpButtons(): void {
 }
 
 function operationModalIsOpen(): boolean {
-  return !queryPanelEl.hidden || !profileToolsEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden || !appSettingsEl.hidden;
+  return !newVaultEl.hidden || !queryPanelEl.hidden || !profileToolsEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden || !appSettingsEl.hidden;
 }
 
 function syncOperationModal(): void {
