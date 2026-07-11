@@ -1,4 +1,4 @@
-# eva-wiki
+# Eva-wiki
 
 Desktop app for exploring a markdown wiki vault as an interactive graph.
 
