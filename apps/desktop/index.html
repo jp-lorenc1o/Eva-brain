@@ -107,6 +107,20 @@
         <div id="query-citations" class="query-citations"></div>
       </section>
     </aside>
+    <section id="brain-library" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="brain-library-title">
+      <button id="brain-library-close" class="panel-close" aria-label="Close brain library">&#10005;</button>
+      <div class="panel-head">
+        <p class="form-kicker">Your library</p>
+        <h2 id="brain-library-title">Your brains</h2>
+        <p class="form-copy">Choose a brain Eva already keeps in Documents/Eva/Brains, or import one from elsewhere.</p>
+      </div>
+      <div id="brain-library-body" aria-live="polite"></div>
+      <p id="brain-library-error" class="form-error" role="alert" hidden></p>
+      <div class="brain-library-actions">
+        <button id="brain-library-import" class="btn-stamp aux" type="button">Import a brain</button>
+        <button id="brain-library-new" class="btn-stamp" type="button">New brain</button>
+      </div>
+    </section>
     <section id="new-vault" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="new-vault-title">
       <form id="new-vault-form">
         <div class="panel-head">

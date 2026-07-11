@@ -22,6 +22,13 @@ struct VaultProfile {
     purpose: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrainEntry {
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Job {
@@ -211,6 +218,39 @@ fn brains_root() -> Result<PathBuf, String> {
         .map_err(|e| format!("Eva Brains folder: {e}"))
 }
 
+fn brain_entry(path: &Path) -> Result<BrainEntry, String> {
+    let path = path.canonicalize().map_err(|e| e.to_string())?;
+    let name = path
+        .file_name()
+        .ok_or("brain path has no folder name")?
+        .to_string_lossy()
+        .to_string();
+    Ok(BrainEntry {
+        name,
+        path: path.to_string_lossy().to_string(),
+    })
+}
+
+fn is_brain(path: &Path) -> bool {
+    path.is_dir()
+        && path.join("EVA.md").is_file()
+        && require_vault_repo(path).is_ok()
+}
+
+fn list_brains() -> Result<Vec<BrainEntry>, String> {
+    let root = brains_root()?;
+    let mut brains: Vec<BrainEntry> = fs::read_dir(root)
+        .map_err(|e| format!("read Eva Brains folder: {e}"))?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            is_brain(&path).then(|| brain_entry(&path).ok()).flatten()
+        })
+        .collect();
+    brains.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(brains)
+}
+
 fn profile_text(value: &str, field: &str, max: usize, required: bool) -> Result<String, String> {
     let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
     if required && value.is_empty() {
@@ -282,6 +322,41 @@ fn bootstrap_vault(root: &Path, profile: Option<&VaultProfile>) -> Result<bool, 
     Ok(true)
 }
 
+fn init_git_repo(root: &Path) -> Result<(), String> {
+    match Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("start Git repository: {e}"))
+    {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(format!(
+            "start Git repository: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn copy_directory(source: &Path, destination: &Path) -> Result<(), String> {
+    for entry in fs::read_dir(source).map_err(|e| format!("read import folder: {e}"))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let kind = entry.file_type().map_err(|e| e.to_string())?;
+        let from = entry.path();
+        let to = destination.join(entry.file_name());
+        if kind.is_symlink() {
+            continue; // Keep imports self-contained; do not follow external links.
+        }
+        if kind.is_dir() {
+            fs::create_dir(&to).map_err(|e| format!("copy folder: {e}"))?;
+            copy_directory(&from, &to)?;
+        } else if kind.is_file() {
+            fs::copy(&from, &to).map_err(|e| format!("copy file: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
 fn create_brain(name: &str, profile: &VaultProfile) -> Result<PathBuf, String> {
     let name = brain_dir_name(name)?;
     let parent = brains_root()?;
@@ -291,24 +366,9 @@ fn create_brain(name: &str, profile: &VaultProfile) -> Result<PathBuf, String> {
     }
     fs::create_dir(&root).map_err(|e| format!("create brain folder: {e}"))?;
 
-    match Command::new("git")
-        .args(["init", "-b", "main"])
-        .current_dir(&root)
-        .output()
-        .map_err(|e| format!("start Git repository: {e}"))
-    {
-        Ok(out) if out.status.success() => {}
-        Ok(out) => {
-            let _ = fs::remove_dir_all(&root);
-            return Err(format!(
-                "start Git repository: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        Err(error) => {
-            let _ = fs::remove_dir_all(&root);
-            return Err(error);
-        }
+    if let Err(error) = init_git_repo(&root) {
+        let _ = fs::remove_dir_all(&root);
+        return Err(error);
     }
 
     if let Err(error) = bootstrap_vault(&root, Some(profile)) {
@@ -318,6 +378,58 @@ fn create_brain(name: &str, profile: &VaultProfile) -> Result<PathBuf, String> {
         return Err(format!("bootstrap new brain: {error}"));
     }
     Ok(root)
+}
+
+fn import_brain(source: &Path) -> Result<BrainEntry, String> {
+    let source = source
+        .canonicalize()
+        .map_err(|e| format!("brain to import: {e}"))?;
+    if !source.is_dir() {
+        return Err("choose a folder to import".into());
+    }
+    let root = brains_root()?;
+    if source.starts_with(&root) {
+        return Err("that brain is already in Eva Brains".into());
+    }
+    let name = source
+        .file_name()
+        .ok_or("import folder has no name")?
+        .to_string_lossy()
+        .to_string();
+    let name = brain_dir_name(&name)?.to_string();
+    let destination = root.join(&name);
+    if destination.exists() {
+        return Err(format!("a brain named \"{name}\" already exists in Eva Brains"));
+    }
+
+    let has_git_history = require_vault_repo(&source).is_ok();
+    if has_git_history {
+        if source.join(".git").is_file() {
+            return Err("import the primary brain folder, not a Git worktree".into());
+        }
+        if !git(&source, &["status", "--porcelain"])?.trim().is_empty() {
+            return Err("commit or discard the source brain's changes before importing it".into());
+        }
+    }
+
+    fs::create_dir(&destination).map_err(|e| format!("create imported brain: {e}"))?;
+    let imported = (|| -> Result<BrainEntry, String> {
+        copy_directory(&source, &destination)?;
+        if !has_git_history {
+            init_git_repo(&destination)?;
+            if git(&destination, &["status", "--porcelain"])?.trim().is_empty() {
+                return Err("the selected folder contains no importable files".into());
+            }
+            git(&destination, &["add", "-A"])?;
+            git(&destination, &["commit", "-m", &format!("import: {name}")])?;
+        }
+        bootstrap_vault(&destination, None)?;
+        brain_entry(&destination)
+    })();
+    if imported.is_err() {
+        let _ = fs::remove_dir_all(&destination);
+    }
+    imported
 }
 
 fn tools_dir() -> Result<PathBuf, String> {
@@ -1136,6 +1248,16 @@ pub fn brain_create(
     let profile = vault_profile(&language, &agent, &purpose)?;
     let root = create_brain(&name, &profile)?;
     Ok(root.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn brain_list() -> Result<Vec<BrainEntry>, String> {
+    list_brains()
+}
+
+#[tauri::command]
+pub fn brain_import(source: String) -> Result<BrainEntry, String> {
+    import_brain(Path::new(&source))
 }
 
 #[tauri::command]

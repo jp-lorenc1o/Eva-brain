@@ -16,6 +16,8 @@ fn main() {
             ingest::ingest_decide,
             ingest::ensure_schema,
             ingest::brain_create,
+            ingest::brain_list,
+            ingest::brain_import,
             ingest::query_run,
             ingest::health_check_run,
             ingest::query_save,

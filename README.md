@@ -34,7 +34,9 @@ purpose; Eva stores that profile in `EVA.md`, creates a local Git repository
 and starter brain in `~/Documents/Eva/Brains`, then opens the graph. Select
 **Ingest** to add the first source. Select **Query** to ask the maintained
 brain a question; useful answers can be saved as a reviewable analysis page.
-Use **Open brain** for an existing Markdown vault.
+Use **Open brain** to choose from Eva's managed brain library. **Import a
+brain** copies an external Markdown folder into `~/Documents/Eva/Brains` so it
+joins that library without changing the original folder.
 
 ## Health Check
 

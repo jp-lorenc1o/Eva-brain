@@ -93,6 +93,10 @@ const queryResultEl = document.getElementById('query-result') as HTMLElement;
 const queryAnswerEl = document.getElementById('query-answer') as HTMLElement;
 const queryCitationsEl = document.getElementById('query-citations') as HTMLElement;
 const querySaveEl = document.getElementById('query-save') as HTMLButtonElement;
+const brainLibraryEl = document.getElementById('brain-library') as HTMLElement;
+const brainLibraryBodyEl = document.getElementById('brain-library-body') as HTMLElement;
+const brainLibraryErrorEl = document.getElementById('brain-library-error') as HTMLElement;
+const brainLibraryImportEl = document.getElementById('brain-library-import') as HTMLButtonElement;
 const newVaultEl = document.getElementById('new-vault') as HTMLElement;
 const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
 const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
@@ -122,6 +126,7 @@ let latestQuery: { question: string; answer: QueryAnswer } | null = null;
 let healthReport: HealthReport | null = null;
 let healthError: string | null = null;
 let healthCheckRunning = false;
+let brainLibraryLoading = false;
 const agentActive = new Set<string>();
 
 /* Panel exclusion zones ------------------------------------------------------
@@ -332,9 +337,109 @@ async function openRecent(path: string): Promise<void> {
   }
 }
 
-async function chooseVault(): Promise<void> {
-  const dir = await open({ directory: true, title: 'Open brain' });
-  if (typeof dir === 'string') await openVault(dir);
+interface BrainEntry {
+  name: string;
+  path: string;
+}
+
+function setBrainLibraryError(message: string | null): void {
+  brainLibraryErrorEl.hidden = !message;
+  brainLibraryErrorEl.textContent = message ?? '';
+}
+
+function renderBrainLibrary(brains: BrainEntry[] = []): void {
+  brainLibraryBodyEl.innerHTML = '';
+  if (brainLibraryLoading) {
+    const loading = document.createElement('p');
+    loading.className = 'brain-library-loading';
+    loading.textContent = 'Reading your brains…';
+    brainLibraryBodyEl.appendChild(loading);
+    return;
+  }
+  if (brains.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'brain-library-empty';
+    empty.textContent = 'No brains here yet. Create one or import an existing one.';
+    brainLibraryBodyEl.appendChild(empty);
+    return;
+  }
+  const list = document.createElement('div');
+  list.className = 'brain-library-list';
+  for (const brain of brains) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'brain-library-brain';
+    const name = document.createElement('span');
+    name.className = 'brain-library-name';
+    name.textContent = brain.name;
+    const path = document.createElement('span');
+    path.className = 'brain-library-path';
+    path.textContent = brain.path;
+    row.append(name, path);
+    row.addEventListener('click', () => void openLibraryBrain(brain.path));
+    list.appendChild(row);
+  }
+  brainLibraryBodyEl.appendChild(list);
+}
+
+async function loadBrainLibrary(): Promise<void> {
+  brainLibraryLoading = true;
+  brainLibraryImportEl.disabled = true;
+  renderBrainLibrary();
+  let brains: BrainEntry[] = [];
+  try {
+    brains = await invoke<BrainEntry[]>('brain_list');
+  } catch (error) {
+    setBrainLibraryError(String(error));
+  } finally {
+    brainLibraryLoading = false;
+    brainLibraryImportEl.disabled = false;
+    renderBrainLibrary(brains);
+  }
+}
+
+function closeBrainLibrary(): void {
+  brainLibraryEl.hidden = true;
+  setBrainLibraryError(null);
+  updateExclusions();
+}
+
+function showBrainLibrary(): void {
+  brainLibraryEl.hidden = false;
+  setBrainLibraryError(null);
+  updateExclusions();
+  void loadBrainLibrary();
+}
+
+async function openLibraryBrain(path: string): Promise<void> {
+  closeBrainLibrary();
+  try {
+    await openVault(path);
+  } catch (error) {
+    showBrainLibrary();
+    setBrainLibraryError(String(error));
+  }
+}
+
+async function importBrain(): Promise<void> {
+  const source = await open({ directory: true, title: 'Import a brain' });
+  if (typeof source !== 'string') return;
+  brainLibraryLoading = true;
+  brainLibraryImportEl.disabled = true;
+  setBrainLibraryError(null);
+  renderBrainLibrary();
+  try {
+    const brain = await invoke<BrainEntry>('brain_import', { source });
+    closeBrainLibrary();
+    await openVault(brain.path);
+    setIngestStatus('Brain imported into Eva Brains', false);
+  } catch (error) {
+    setBrainLibraryError(String(error));
+  } finally {
+    brainLibraryLoading = false;
+    brainLibraryImportEl.disabled = false;
+    if (!brainLibraryEl.hidden) await loadBrainLibrary();
+  }
 }
 
 function setNewVaultError(message: string | null): void {
@@ -1343,10 +1448,16 @@ void listen('ingest:rejected', async (event) => {
 });
 
 /* Wiring -------------------------------------------------------------------- */
-document.getElementById('open-vault')!.addEventListener('click', () => void chooseVault());
-document.getElementById('empty-open')!.addEventListener('click', () => void chooseVault());
+document.getElementById('open-vault')!.addEventListener('click', showBrainLibrary);
+document.getElementById('empty-open')!.addEventListener('click', showBrainLibrary);
 document.getElementById('new-vault-button')!.addEventListener('click', showNewVault);
 document.getElementById('empty-new')!.addEventListener('click', showNewVault);
+document.getElementById('brain-library-close')!.addEventListener('click', closeBrainLibrary);
+brainLibraryImportEl.addEventListener('click', () => void importBrain());
+document.getElementById('brain-library-new')!.addEventListener('click', () => {
+  closeBrainLibrary();
+  showNewVault();
+});
 document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
 newVaultNameEl.addEventListener('input', () => {
   setNewVaultError(null);
@@ -1402,6 +1513,10 @@ document.addEventListener('keydown', (event) => {
   if (!reviewEl.hidden) return;
   if (!queryPanelEl.hidden) {
     closeQuery();
+    return;
+  }
+  if (!brainLibraryEl.hidden) {
+    closeBrainLibrary();
     return;
   }
   if (!newVaultEl.hidden) {

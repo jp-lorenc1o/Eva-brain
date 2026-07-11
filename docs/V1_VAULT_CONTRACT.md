@@ -36,6 +36,11 @@ It never overwrites an existing infrastructure file. All raw sources and wiki
 pages remain ordinary local files, so they can be inspected in Obsidian or any
 editor without Eva.
 
+The **Open brain** selector lists the accessible brains already in the managed
+library. **Import a brain** copies an external folder into that library; a
+clean Git brain retains its history, while a plain Markdown folder is
+initialized as a new Git brain. Eva never modifies the source folder.
+
 ## Required V1 operations
 
 ### Ingest
