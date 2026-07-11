@@ -123,6 +123,8 @@ let simNodes: SimNode[] = [];
 let refreshPositions: (() => void) | null = null;
 let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
+let homeCenterX = forceX<SimNode>(0).strength(0);
+let homeCenterY = forceY<SimNode>(0).strength(0);
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
@@ -173,6 +175,8 @@ function updateExclusions(): void {
   const center = pageCenter();
   centerX.x(center.x);
   centerY.y(center.y);
+  homeCenterX.x((node) => (isHomeNode(node) ? center.x : 0));
+  homeCenterY.y((node) => (isHomeNode(node) ? center.y : 0));
 }
 
 function pageCenter(): { x: number; y: number } {
@@ -298,8 +302,6 @@ function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): voi
   if (home) {
     home.x = center.x;
     home.y = center.y;
-    home.fx = center.x;
-    home.fy = center.y;
     home.vx = 0;
     home.vy = 0;
   }
@@ -322,14 +324,11 @@ function reorganizeGraph(): void {
     node.vx = 0;
     node.vy = 0;
   }
-  const home = simNodes.find(isHomeNode);
-  if (home) {
-    home.fx = center.x;
-    home.fy = center.y;
-  }
   svg.querySelectorAll('.node.pinned').forEach((node) => node.classList.remove('pinned'));
   centerX.x(center.x);
   centerY.y(center.y);
+  homeCenterX.x((node) => (isHomeNode(node) ? center.x : 0));
+  homeCenterY.y((node) => (isHomeNode(node) ? center.y : 0));
 
   if (reducedMotion) {
     simulation.stop();
@@ -739,6 +738,14 @@ function renderGraph(graph: Graph): void {
 
   centerX = forceX<SimNode>(center.x).strength(0.032);
   centerY = forceY<SimNode>(center.y).strength(0.038);
+  // Home remains draggable. It is only guided to the center after a
+  // reorganization, where this gentle target force creates the visible return.
+  homeCenterX = forceX<SimNode>((node) => (isHomeNode(node) ? center.x : 0)).strength((node) =>
+    isHomeNode(node) ? 0.14 : 0,
+  );
+  homeCenterY = forceY<SimNode>((node) => (isHomeNode(node) ? center.y : 0)).strength((node) =>
+    isHomeNode(node) ? 0.14 : 0,
+  );
 
   simulation = forceSimulation(nodes)
     .alphaDecay(LAYOUT_ALPHA_DECAY)
@@ -754,6 +761,8 @@ function renderGraph(graph: Graph): void {
     .force('charge', forceManyBody().strength(-520))
     .force('x', centerX)
     .force('y', centerY)
+    .force('home-center-x', homeCenterX)
+    .force('home-center-y', homeCenterY)
     .force(
       'collide',
       forceCollide<SimNode>()
