@@ -254,6 +254,10 @@ function forcePanels() {
 }
 const panelForce = forcePanels();
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const LAYOUT_START_ALPHA = 0.56;
+const LAYOUT_REORGANIZE_ALPHA = 0.64;
+const LAYOUT_ALPHA_DECAY = 0.012;
+const LAYOUT_VELOCITY_DECAY = 0.58;
 
 // Labels are the reading surface of a brain graph, so their width belongs in
 // the layout's physical model—not merely in the SVG paint. The cap keeps a
@@ -278,8 +282,9 @@ function reorganizeGraph(): void {
   for (const node of simNodes) {
     node.fx = null;
     node.fy = null;
+    node.vx = 0;
+    node.vy = 0;
   }
-  seedGraphNodes(simNodes, center);
   svg.querySelectorAll('.node.pinned').forEach((node) => node.classList.remove('pinned'));
   centerX.x(center.x);
   centerY.y(center.y);
@@ -289,7 +294,7 @@ function reorganizeGraph(): void {
     simulation.alpha(1).tick(420);
     refreshPositions?.();
   } else {
-    simulation.alpha(1).alphaTarget(AMBIENT_ALPHA).restart();
+    simulation.alpha(LAYOUT_REORGANIZE_ALPHA).alphaTarget(AMBIENT_ALPHA).restart();
   }
   setIngestStatus('Graph reorganized', false);
 }
@@ -619,11 +624,8 @@ function renderGraph(graph: Graph): void {
   // which strands the cluster along the top edge once the settle phase is
   // spent fighting the panel force.
   const center = usableCenter();
-  const nodes: SimNode[] = graph.nodes.map((n, i) => ({
-    ...n,
-    x: center.x + 86 * Math.sqrt(i + 0.5) * Math.cos(i * GOLDEN_ANGLE),
-    y: center.y + 86 * Math.sqrt(i + 0.5) * Math.sin(i * GOLDEN_ANGLE),
-  }));
+  const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
+  seedGraphNodes(nodes, center);
   simNodes = nodes;
   const links: SimulationLinkDatum<SimNode>[] = graph.edges.map((e) => ({
     source: e.source,
@@ -698,6 +700,8 @@ function renderGraph(graph: Graph): void {
   centerY = forceY<SimNode>(center.y).strength(0.038);
 
   simulation = forceSimulation(nodes)
+    .alphaDecay(LAYOUT_ALPHA_DECAY)
+    .velocityDecay(LAYOUT_VELOCITY_DECAY)
     .force(
       'link',
       forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
@@ -725,9 +729,9 @@ function renderGraph(graph: Graph): void {
     simulation.tick(300);
     updatePositions();
   } else {
-    // A small non-zero alpha target keeps the simulation breathing forever —
-    // the graph should always feel alive beneath the vellum.
-    simulation.alpha(0.9).alphaTarget(AMBIENT_ALPHA).alphaMin(0);
+    // Begin with enough energy to settle a new graph, but with a long, soft
+    // deceleration so opening and reorganization read as a reflow—not a jump.
+    simulation.alpha(LAYOUT_START_ALPHA).alphaTarget(AMBIENT_ALPHA).alphaMin(0);
   }
 }
 
