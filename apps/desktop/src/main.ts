@@ -937,13 +937,41 @@ function goHome(): void {
   // A pending review is deliberately the one exception: it needs an explicit
   // accept/reject decision before the person can leave that operation.
   if (!reviewEl.hidden) {
-    setIngestStatus('Finish the review before returning to the graph', false, true);
+    setIngestStatus('Finish the review before leaving this brain', false, true);
+    return;
+  }
+  if (opIngestEl.classList.contains('active')) {
+    setIngestStatus('Wait for the current ingest to finish before leaving this brain', true);
     return;
   }
   if (!queryPanelEl.hidden) closeQuery();
   closeSidePanels();
   recentPopEl.hidden = true;
   deselect();
+
+  // Home is Eva's launcher, not the graph's central index page. The brain
+  // remains untouched on disk and stays in the local library / recents list;
+  // only its in-memory view is released here.
+  simulation?.stop();
+  simulation = null;
+  simNodes = [];
+  refreshPositions = null;
+  svg.innerHTML = '';
+  vault = null;
+  issues = [];
+  logRaw = null;
+  currentVault = null;
+  healthReport = null;
+  healthError = null;
+  healthCheckRunning = false;
+  vaultPathEl.textContent = 'No brain open';
+  vaultPathEl.title = '';
+  legendEl.hidden = true;
+  commandEl.hidden = true;
+  emptyEl.hidden = false;
+  setIngestStatus(null, false);
+  refreshRecentViews();
+  updateExclusions();
 }
 
 /* Operation panels: lint and log share the left dock, one at a time -------- */
