@@ -164,6 +164,28 @@ body::after {
   padding: 26px 28px 22px;
 }
 
+.eva-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 16px -5px;
+  color: var(--ink);
+  font-family: var(--font-opening);
+  font-size: 39px;
+  font-variation-settings: 'opsz' 36;
+  font-weight: 510;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.eva-brand img {
+  display: block;
+  width: 56px;
+  height: 56px;
+  mix-blend-mode: multiply;
+  user-select: none;
+}
+
 #empty .empty-kicker {
   margin: 0 0 6px;
   color: var(--red);
