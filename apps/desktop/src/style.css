@@ -1041,11 +1041,14 @@ body.operation-modal-open #ingest-status {
 .brain-manager-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid var(--hairline);
+}
+
+.brain-manager-actions .btn-stamp {
+  margin-left: auto;
 }
 
 .brain-manager-status {
