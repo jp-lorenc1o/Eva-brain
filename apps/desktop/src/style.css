@@ -20,6 +20,7 @@
 
   --font-data: 'Fragment Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --font-body: 'Instrument Sans Variable', 'Instrument Sans', system-ui, sans-serif;
+  --font-opening: 'Newsreader Variable', 'Newsreader', Georgia, serif;
 
   /* node inks — muted archival tones, none competing with the red pen */
   --node-index: #7c3a2d;
@@ -173,13 +174,17 @@ body::after {
 }
 
 #empty h1 {
-  margin: 0 0 8px;
-  font-family: var(--font-data);
-  font-weight: 400;
-  font-size: 18px;
-  letter-spacing: 0.01em;
+  margin: 0 0 10px;
+  max-width: 360px;
+  color: #302e28;
+  font-family: var(--font-opening);
+  font-size: clamp(30px, 5vw, 40px);
+  font-variation-settings: 'opsz' 36;
+  font-weight: 460;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+  text-wrap: balance;
   text-transform: none;
-  color: var(--ink);
 }
 
 .empty-desc {
