@@ -62,6 +62,13 @@ impl AgentRuntime {
         }
     }
 
+    fn setup_choice(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+        }
+    }
+
     fn command(self) -> &'static str {
         match self {
             Self::Codex => "codex",
@@ -82,6 +89,16 @@ impl AgentRuntime {
 pub struct BrainEntry {
     pub name: String,
     pub path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrainSettings {
+    pub name: String,
+    pub path: String,
+    pub language: String,
+    pub agent: String,
+    pub purpose: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -381,17 +398,22 @@ fn vault_profile(language: &str, agent: &str, purpose: &str) -> Result<VaultProf
     })
 }
 
+fn profile_value<'a>(schema: &'a str, field: &str) -> Option<&'a str> {
+    let prefix = format!("- **{field}:**");
+    schema
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(&prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
 /// The profile is portable Markdown, not an account setting. Brains created
 /// before runtime choice existed continue to use Claude so their behavior does
 /// not change underneath their owner.
 fn runtime_for_vault(vault: &Path) -> Result<AgentRuntime, String> {
     let schema = fs::read_to_string(vault.join("EVA.md"))
         .map_err(|e| format!("read EVA.md: {e}"))?;
-    let prefix = "- **Agent runtime:**";
-    let Some(label) = schema
-        .lines()
-        .find_map(|line| line.trim().strip_prefix(prefix))
-    else {
+    let Some(label) = profile_value(&schema, "Agent runtime") else {
         return Ok(AgentRuntime::Claude);
     };
     AgentRuntime::from_profile_label(label).ok_or_else(|| {
@@ -421,15 +443,82 @@ fn eva_schema(profile: Option<&VaultProfile>) -> String {
     let Some(profile) = profile else {
         return EVA_MD.into();
     };
+    format!("{EVA_MD}\n\n{}", profile_section(profile))
+}
+
+fn profile_section(profile: &VaultProfile) -> String {
     let purpose = if profile.purpose.is_empty() {
         "Not specified yet.".to_string()
     } else {
         profile.purpose.clone()
     };
     format!(
-        "{EVA_MD}\n\n### Active profile\n\n- **Working language:** {}\n- **Agent runtime:** {}\n- **Purpose:** {}\n\nWrite and maintain wiki pages in the working language unless the human asks otherwise.\n",
+        "### Active profile\n\n- **Working language:** {}\n- **Agent runtime:** {}\n- **Purpose:** {}\n\nWrite and maintain wiki pages in the working language unless the human asks otherwise.\n",
         profile.language, profile.agent, purpose
     )
+}
+
+fn replace_profile_section(schema: &str, profile: &VaultProfile) -> String {
+    const PROFILE_HEADER: &str = "### Active profile";
+    let section = profile_section(profile);
+    let Some(start) = schema.find(PROFILE_HEADER) else {
+        return format!("{}\n\n{section}", schema.trim_end());
+    };
+    let after_header = start + PROFILE_HEADER.len();
+    let tail = &schema[after_header..];
+    let end = tail
+        .find("\n### ")
+        .map(|offset| after_header + offset + 1)
+        .unwrap_or(schema.len());
+    let before = schema[..start].trim_end();
+    let after = schema[end..].trim_start();
+    if after.is_empty() {
+        format!("{before}\n\n{section}")
+    } else {
+        format!("{before}\n\n{section}\n{after}\n")
+    }
+}
+
+fn brain_settings(vault: &Path) -> Result<BrainSettings, String> {
+    let root = require_eva_brain(vault)?;
+    let schema = fs::read_to_string(root.join("EVA.md")).map_err(|e| format!("read EVA.md: {e}"))?;
+    let entry = brain_entry(&root)?;
+    let language = profile_value(&schema, "Working language")
+        .unwrap_or("English")
+        .to_string();
+    let purpose = profile_value(&schema, "Purpose")
+        .filter(|value| *value != "Not specified yet.")
+        .unwrap_or("")
+        .to_string();
+    Ok(BrainSettings {
+        name: entry.name,
+        path: entry.path,
+        language,
+        agent: runtime_for_vault(&root)?.setup_choice().to_string(),
+        purpose,
+    })
+}
+
+fn update_brain_settings(
+    vault: &Path,
+    language: &str,
+    agent: &str,
+    purpose: &str,
+) -> Result<BrainSettings, String> {
+    let root = require_eva_brain(vault)?;
+    let profile = vault_profile(language, agent, purpose)?;
+    if !git(&root, &["status", "--porcelain"])?.trim().is_empty() {
+        return Err("commit or resolve the brain's current changes before updating its settings".into());
+    }
+    let schema_path = root.join("EVA.md");
+    let existing = fs::read_to_string(&schema_path).map_err(|e| format!("read EVA.md: {e}"))?;
+    let updated = replace_profile_section(&existing, &profile);
+    if existing != updated {
+        fs::write(&schema_path, updated).map_err(|e| format!("write EVA.md: {e}"))?;
+        git(&root, &["add", "EVA.md"])?;
+        git(&root, &["commit", "-m", "config: update brain profile"])?;
+    }
+    brain_settings(&root)
 }
 
 /// Write only missing Eva infrastructure, then commit exactly those files.
@@ -1669,6 +1758,25 @@ pub fn brain_import(source: String) -> Result<BrainEntry, String> {
 }
 
 #[tauri::command]
+pub fn brain_settings_get(vault: String) -> Result<BrainSettings, String> {
+    let root = require_vault_repo(Path::new(&vault))?;
+    // Selecting a legacy Eva brain in Manager is also an open/adoption action:
+    // add only its missing standard files before exposing editable settings.
+    bootstrap_vault(&root, None)?;
+    brain_settings(&root)
+}
+
+#[tauri::command]
+pub fn brain_settings_update(
+    vault: String,
+    language: String,
+    agent: String,
+    purpose: String,
+) -> Result<BrainSettings, String> {
+    update_brain_settings(Path::new(&vault), &language, &agent, &purpose)
+}
+
+#[tauri::command]
 pub async fn query_run(vault: String, question: String) -> Result<QueryAnswer, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = require_eva_brain(Path::new(&vault))?;
@@ -1773,7 +1881,7 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, runtime_for_vault, validate_brain_manifest, vault_profile, verify_agent_write_boundary, verify_brain_standard, AgentRuntime, QueryAnswer, QueryCitation, BRAIN_MANIFEST};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_settings_get, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, profile_section, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile, verify_agent_write_boundary, verify_brain_standard, AgentRuntime, QueryAnswer, QueryCitation, VaultProfile, BRAIN_MANIFEST, EVA_MD};
     use std::{
         fs,
         path::Path,
@@ -1816,6 +1924,31 @@ mod tests {
     }
 
     #[test]
+    fn profile_updates_preserve_the_rest_of_the_brain_contract() {
+        let original = VaultProfile {
+            language: "English".into(),
+            agent: "Claude CLI".into(),
+            purpose: "Original purpose".into(),
+        };
+        let updated = VaultProfile {
+            language: "Español".into(),
+            agent: "Codex CLI".into(),
+            purpose: "Updated purpose".into(),
+        };
+        let schema = format!(
+            "# Custom brain rules\n\n{}\n### Domain extension\n\nKeep this rule.\n",
+            profile_section(&original)
+        );
+        let result = replace_profile_section(&schema, &updated);
+        assert!(result.contains("# Custom brain rules"));
+        assert!(result.contains("**Working language:** Español"));
+        assert!(result.contains("**Agent runtime:** Codex CLI"));
+        assert!(result.contains("**Purpose:** Updated purpose"));
+        assert!(result.contains("### Domain extension\n\nKeep this rule."));
+        assert!(!result.contains("Original purpose"));
+    }
+
+    #[test]
     fn brain_standard_manifest_declares_the_supported_version() {
         assert!(validate_brain_manifest(BRAIN_MANIFEST).is_ok());
     }
@@ -1838,6 +1971,46 @@ mod tests {
         init_git_repo(&root).unwrap();
 
         assert!(bootstrap_vault(&root, None).unwrap());
+        assert!(verify_brain_standard(&root).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn brain_manager_saves_a_profile_in_local_history() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-brain-manager-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+        bootstrap_vault(&root, None).unwrap();
+
+        let settings = update_brain_settings(&root, "Español", "codex", "Market research").unwrap();
+        assert_eq!(settings.language, "Español");
+        assert_eq!(settings.agent, "codex");
+        assert_eq!(settings.purpose, "Market research");
+        assert!(git(&root, &["log", "-1", "--format=%s"])
+            .unwrap()
+            .contains("config: update brain profile"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn brain_manager_adopts_a_legacy_eva_brain_before_editing_it() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-brain-manager-legacy-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+        fs::write(root.join("EVA.md"), EVA_MD).unwrap();
+        git(&root, &["add", "EVA.md"]).unwrap();
+        git(&root, &["commit", "-m", "legacy Eva brain"]).unwrap();
+
+        let settings = brain_settings_get(root.to_string_lossy().to_string()).unwrap();
+        assert_eq!(settings.agent, "claude");
         assert!(verify_brain_standard(&root).is_ok());
         fs::remove_dir_all(root).unwrap();
     }

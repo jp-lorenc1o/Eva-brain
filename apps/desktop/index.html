@@ -29,6 +29,7 @@
           <span class="launch-choice-detail">Read a local folder of Markdown pages as a graph.</span>
         </button>
       </div>
+      <button id="empty-manage" class="launch-utility" type="button">Manage your local brains</button>
       <div id="recent"></div>
     </section>
     <header id="command" class="glass" hidden>
@@ -36,7 +37,7 @@
         <button id="go-home" class="btn-stamp" type="button" title="Return to Eva's brain library">Home</button>
         <button id="new-vault-button" class="btn-stamp">New brain</button>
         <button id="open-vault" class="btn-stamp">Open brain</button>
-        <button id="recent-toggle" class="btn-stamp aux" aria-label="Recent brains">&#9662;</button>
+        <button id="manage-brains" class="btn-stamp">Manage brains</button>
         <span id="vault-path">No brain open</span>
       </div>
       <span class="toolbar-rule" aria-hidden="true"></span>
@@ -55,7 +56,6 @@
     </header>
     <div id="ingest-status" role="status" aria-live="polite" hidden></div>
     <div id="operation-scrim" aria-hidden="true" hidden></div>
-    <div id="recent-pop" class="glass" hidden></div>
     <aside id="lint-panel" class="glass operation-modal" hidden aria-label="Brain health" role="dialog" aria-modal="true">
       <button class="panel-close" data-panel="lint" aria-label="Close health check">&#10005;</button>
       <div class="panel-head">
@@ -127,8 +127,53 @@
       <div id="brain-library-body" aria-live="polite"></div>
       <p id="brain-library-error" class="form-error" role="alert" hidden></p>
       <div class="brain-library-actions">
+        <button id="brain-library-manage" class="btn-stamp aux" type="button">Manage brains</button>
         <button id="brain-library-import" class="btn-stamp aux" type="button">Import a brain</button>
         <button id="brain-library-new" class="btn-stamp" type="button">New brain</button>
+      </div>
+    </section>
+    <section id="brain-manager" class="glass operation-modal" hidden role="dialog" aria-modal="true" aria-labelledby="brain-manager-title">
+      <button id="brain-manager-close" class="panel-close" type="button" aria-label="Close brain manager">&#10005;</button>
+      <div class="panel-head">
+        <p class="form-kicker">Local library</p>
+        <h2 id="brain-manager-title">Brain manager</h2>
+        <p class="form-copy">See where each brain lives and set the profile Eva uses when it works there.</p>
+      </div>
+      <div class="brain-manager-layout">
+        <section class="brain-manager-shelf" aria-label="Local brains">
+          <p class="brain-manager-section-label">Your brains</p>
+          <div id="brain-manager-list" aria-live="polite"></div>
+        </section>
+        <form id="brain-manager-form" hidden>
+          <div class="brain-manager-selection">
+            <span id="brain-manager-name" class="brain-manager-name"></span>
+            <span id="brain-manager-path" class="brain-manager-path"></span>
+          </div>
+          <label class="form-label" for="brain-manager-language">Working language</label>
+          <input id="brain-manager-language" class="text-input compact" type="text" list="vault-languages" maxlength="48" autocomplete="off" />
+          <fieldset class="runtime-fieldset brain-manager-runtime">
+            <legend class="form-label">AI runtime</legend>
+            <div class="runtime-choices">
+              <label class="runtime-choice">
+                <input name="brain-manager-agent" type="radio" value="codex" />
+                <span class="runtime-choice-name">Codex</span>
+                <span class="runtime-choice-detail">Use the Codex CLI signed in on this Mac.</span>
+              </label>
+              <label class="runtime-choice">
+                <input name="brain-manager-agent" type="radio" value="claude" />
+                <span class="runtime-choice-name">Claude Code</span>
+                <span class="runtime-choice-detail">Use the Claude CLI signed in on this Mac.</span>
+              </label>
+            </div>
+          </fieldset>
+          <label class="form-label" for="brain-manager-purpose">What is this brain for? <span class="optional">Optional</span></label>
+          <textarea id="brain-manager-purpose" class="purpose-input" rows="2" maxlength="240"></textarea>
+          <p id="brain-manager-error" class="form-error" role="alert" hidden></p>
+          <div class="brain-manager-actions">
+            <span id="brain-manager-status" class="brain-manager-status" role="status" aria-live="polite" hidden></span>
+            <button id="brain-manager-save" class="btn-stamp" type="submit">Save changes</button>
+          </div>
+        </form>
       </div>
     </section>
     <section id="new-vault" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="new-vault-title">

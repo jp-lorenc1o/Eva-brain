@@ -45,6 +45,10 @@ Use **Open brain** to choose from Eva's managed brain library. **Import a
 brain** copies an external Markdown folder into `~/Documents/Eva/Brains` so it
 joins that library without changing the original folder.
 
+Use **Manage brains** to see each local folder and update its working language,
+AI runtime, or purpose. Eva records a profile change in that brain's local Git
+history; it does not create an account, remote, or cloud copy.
+
 ## Health Check
 
 **Health** combines deterministic structural linting with an optional,

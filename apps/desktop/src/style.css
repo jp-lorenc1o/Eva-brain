@@ -150,7 +150,9 @@ body::after {
 .op:focus-visible,
 .recent-row:focus-visible,
 .health-pages button:focus-visible,
-.launch-choice:focus-visible {
+.launch-choice:focus-visible,
+.launch-utility:focus-visible,
+.brain-manager-brain:focus-visible {
   outline: 2px solid var(--red);
   outline-offset: 2px;
 }
@@ -219,6 +221,25 @@ body::after {
 .launch-menu {
   display: grid;
   gap: 8px;
+}
+
+.launch-utility {
+  display: inline-block;
+  margin: 11px 0 -2px;
+  padding: 4px 1px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-align: left;
+  transition: color 150ms ease;
+}
+
+.launch-utility:hover {
+  color: var(--red);
 }
 
 .launch-choice {
@@ -457,14 +478,6 @@ body::after {
   padding: 1px 5px;
   margin-left: 6px;
   vertical-align: 1px;
-}
-
-/* Recent-vaults popover under the toolbar */
-#recent-pop {
-  top: 64px;
-  left: 16px;
-  width: 320px;
-  padding: 12px 14px;
 }
 
 /* Operations are centered workspaces. The graph remains behind the sheet,
@@ -855,6 +868,201 @@ body.operation-modal-open #ingest-status {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid var(--hairline);
+}
+
+/* Brain manager: a narrow local shelf beside the editable brain profile.
+   Locations stay visible as physical labels rather than being hidden behind a
+   file picker, making it clear that every brain belongs to the person. */
+#brain-manager {
+  width: min(840px, calc(100vw - 56px));
+}
+
+#brain-manager .panel-head h2 {
+  margin-right: 0;
+}
+
+.brain-manager-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.82fr) minmax(0, 1.18fr);
+  gap: 20px;
+  padding-top: 2px;
+}
+
+.brain-manager-shelf {
+  min-width: 0;
+  padding: 3px 18px 3px 0;
+  border-right: 1px solid var(--hairline);
+}
+
+.brain-manager-section-label {
+  margin: 0 0 7px;
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brain-manager-list {
+  display: grid;
+  gap: 6px;
+}
+
+.brain-manager-brain {
+  position: relative;
+  width: 100%;
+  padding: 9px 10px 9px 12px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.brain-manager-brain::before {
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 5px;
+  width: 2px;
+  content: '';
+  background: transparent;
+}
+
+.brain-manager-brain:hover {
+  border-color: var(--hairline);
+  background: rgba(236, 235, 225, 0.7);
+}
+
+.brain-manager-brain.selected {
+  border-color: rgba(203, 24, 29, 0.36);
+  background: rgba(203, 24, 29, 0.045);
+}
+
+.brain-manager-brain.selected::before {
+  background: var(--red);
+}
+
+.brain-manager-brain-name,
+.brain-manager-brain-path {
+  display: block;
+}
+
+.brain-manager-brain-name {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+}
+
+.brain-manager-brain-path {
+  margin-top: 4px;
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 9px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.brain-manager-empty,
+.brain-manager-loading,
+.brain-manager-load-error {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.brain-manager-loading {
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.brain-manager-load-error {
+  color: var(--red);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+#brain-manager-form {
+  min-width: 0;
+}
+
+.brain-manager-selection {
+  margin: 3px 0 17px;
+  padding: 0 0 11px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.brain-manager-name,
+.brain-manager-path {
+  display: block;
+}
+
+.brain-manager-name {
+  color: var(--ink);
+  font-family: var(--font-data);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.brain-manager-path {
+  margin-top: 5px;
+  color: var(--ink-dim);
+  font-family: var(--font-data);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+#brain-manager-language {
+  margin-bottom: 16px;
+}
+
+.brain-manager-runtime {
+  margin-bottom: 15px;
+}
+
+.brain-manager-runtime .runtime-choice {
+  min-height: 68px;
+}
+
+.brain-manager-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+
+.brain-manager-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--node-person);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.brain-manager-status.working {
+  color: var(--red);
+}
+
+.brain-manager-status.working::before {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid rgba(203, 24, 29, 0.28);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  content: '';
+  animation: querywork 850ms linear infinite;
 }
 
 #query-panel .panel-head h2 {
@@ -1525,6 +1733,24 @@ line.edge.lit {
 
 .node.selected text {
   fill: var(--ink);
+}
+
+@media (max-width: 680px) {
+  #brain-manager {
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+  }
+
+  .brain-manager-layout {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .brain-manager-shelf {
+    padding: 0 0 13px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
 }
 
 /* Motion discipline --------------------------------------------------------

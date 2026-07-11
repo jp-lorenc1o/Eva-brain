@@ -62,8 +62,6 @@ const sidebar = document.getElementById('sidebar') as HTMLElement;
 const vaultPathEl = document.getElementById('vault-path') as HTMLElement;
 const emptyEl = document.getElementById('empty') as HTMLElement;
 const recentEl = document.getElementById('recent') as HTMLElement;
-const recentPopEl = document.getElementById('recent-pop') as HTMLElement;
-const recentToggleEl = document.getElementById('recent-toggle') as HTMLButtonElement;
 const commandEl = document.getElementById('command') as HTMLElement;
 const operationScrimEl = document.getElementById('operation-scrim') as HTMLElement;
 const detailEl = document.getElementById('detail') as HTMLElement;
@@ -99,6 +97,19 @@ const brainLibraryEl = document.getElementById('brain-library') as HTMLElement;
 const brainLibraryBodyEl = document.getElementById('brain-library-body') as HTMLElement;
 const brainLibraryErrorEl = document.getElementById('brain-library-error') as HTMLElement;
 const brainLibraryImportEl = document.getElementById('brain-library-import') as HTMLButtonElement;
+const brainManagerEl = document.getElementById('brain-manager') as HTMLElement;
+const brainManagerListEl = document.getElementById('brain-manager-list') as HTMLElement;
+const brainManagerFormEl = document.getElementById('brain-manager-form') as HTMLFormElement;
+const brainManagerNameEl = document.getElementById('brain-manager-name') as HTMLElement;
+const brainManagerPathEl = document.getElementById('brain-manager-path') as HTMLElement;
+const brainManagerLanguageEl = document.getElementById('brain-manager-language') as HTMLInputElement;
+const brainManagerAgentEls = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="brain-manager-agent"]'),
+);
+const brainManagerPurposeEl = document.getElementById('brain-manager-purpose') as HTMLTextAreaElement;
+const brainManagerErrorEl = document.getElementById('brain-manager-error') as HTMLElement;
+const brainManagerStatusEl = document.getElementById('brain-manager-status') as HTMLElement;
+const brainManagerSaveEl = document.getElementById('brain-manager-save') as HTMLButtonElement;
 const newVaultEl = document.getElementById('new-vault') as HTMLElement;
 const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
 const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
@@ -133,6 +144,13 @@ let healthReport: HealthReport | null = null;
 let healthError: string | null = null;
 let healthCheckRunning = false;
 let brainLibraryLoading = false;
+let brainManagerLoading = false;
+let brainManagerSaving = false;
+let brainManagerRequest = 0;
+let brainManagerBrains: BrainEntry[] = [];
+let brainManagerSelectedPath: string | null = null;
+let brainManagerSettings: BrainSettings | null = null;
+let brainManagerLoadError: string | null = null;
 const agentActive = new Set<string>();
 
 /* Panel exclusion zones ------------------------------------------------------
@@ -414,7 +432,6 @@ function renderRecentsInto(container: HTMLElement, errorMessage?: string): void 
 
 function refreshRecentViews(errorMessage?: string): void {
   renderRecentsInto(recentEl, errorMessage);
-  if (!recentPopEl.hidden) renderRecentsInto(recentPopEl, errorMessage);
 }
 
 async function openRecent(path: string): Promise<void> {
@@ -429,6 +446,12 @@ async function openRecent(path: string): Promise<void> {
 interface BrainEntry {
   name: string;
   path: string;
+}
+
+interface BrainSettings extends BrainEntry {
+  language: string;
+  agent: 'codex' | 'claude';
+  purpose: string;
 }
 
 function setBrainLibraryError(message: string | null): void {
@@ -531,6 +554,169 @@ async function importBrain(): Promise<void> {
   }
 }
 
+function setBrainManagerError(message: string | null): void {
+  brainManagerErrorEl.hidden = !message;
+  brainManagerErrorEl.textContent = message ?? '';
+}
+
+function setBrainManagerStatus(message: string | null, working = false): void {
+  brainManagerStatusEl.hidden = !message;
+  brainManagerStatusEl.textContent = message ?? '';
+  brainManagerStatusEl.classList.toggle('working', working);
+}
+
+function renderBrainManager(): void {
+  brainManagerListEl.innerHTML = '';
+  if (brainManagerLoading) {
+    const loading = document.createElement('p');
+    loading.className = 'brain-manager-loading';
+    loading.textContent = 'Reading your local library…';
+    brainManagerListEl.appendChild(loading);
+  } else if (brainManagerBrains.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'brain-manager-empty';
+    empty.textContent = 'No local brains yet. Create or import one to configure it here.';
+    brainManagerListEl.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'brain-manager-list';
+    for (const brain of brainManagerBrains) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'brain-manager-brain';
+      row.classList.toggle('selected', brain.path === brainManagerSelectedPath);
+      const name = document.createElement('span');
+      name.className = 'brain-manager-brain-name';
+      name.textContent = brain.name;
+      const path = document.createElement('span');
+      path.className = 'brain-manager-brain-path';
+      path.textContent = brain.path;
+      row.append(name, path);
+      row.addEventListener('click', () => void selectManagedBrain(brain.path));
+      list.appendChild(row);
+    }
+    brainManagerListEl.appendChild(list);
+  }
+  if (brainManagerLoadError) {
+    const error = document.createElement('p');
+    error.className = 'brain-manager-load-error';
+    error.textContent = brainManagerLoadError;
+    brainManagerListEl.appendChild(error);
+  }
+
+  const settings = brainManagerSettings;
+  brainManagerFormEl.hidden = !settings;
+  if (!settings) return;
+  brainManagerNameEl.textContent = settings.name;
+  brainManagerPathEl.textContent = settings.path;
+  brainManagerPathEl.title = settings.path;
+  brainManagerLanguageEl.value = settings.language;
+  brainManagerAgentEls.forEach((input) => {
+    input.checked = input.value === settings.agent;
+  });
+  brainManagerPurposeEl.value = settings.purpose;
+  brainManagerSaveEl.disabled = brainManagerSaving;
+}
+
+async function selectManagedBrain(path: string): Promise<void> {
+  const request = ++brainManagerRequest;
+  brainManagerSelectedPath = path;
+  brainManagerSettings = null;
+  brainManagerLoadError = null;
+  setBrainManagerError(null);
+  setBrainManagerStatus(null);
+  renderBrainManager();
+  try {
+    const settings = await invoke<BrainSettings>('brain_settings_get', { vault: path });
+    if (request !== brainManagerRequest || brainManagerEl.hidden) return;
+    brainManagerSettings = settings;
+  } catch (error) {
+    if (request !== brainManagerRequest || brainManagerEl.hidden) return;
+    brainManagerLoadError = String(error);
+  }
+  renderBrainManager();
+}
+
+async function loadBrainManager(): Promise<void> {
+  brainManagerLoading = true;
+  brainManagerLoadError = null;
+  renderBrainManager();
+  try {
+    brainManagerBrains = await invoke<BrainEntry[]>('brain_list');
+    brainManagerLoading = false;
+    renderBrainManager();
+    if (brainManagerBrains.length > 0) {
+      await selectManagedBrain(brainManagerBrains[0].path);
+    }
+  } catch (error) {
+    brainManagerLoading = false;
+    brainManagerLoadError = String(error);
+    renderBrainManager();
+  }
+}
+
+function closeBrainManager(): void {
+  brainManagerRequest += 1;
+  brainManagerEl.hidden = true;
+  brainManagerLoading = false;
+  brainManagerSaving = false;
+  brainManagerSelectedPath = null;
+  brainManagerSettings = null;
+  brainManagerLoadError = null;
+  setBrainManagerError(null);
+  setBrainManagerStatus(null);
+  syncOperationModal();
+}
+
+function showBrainManager(): void {
+  closeBrainLibrary();
+  if (!newVaultEl.hidden) closeNewVault();
+  if (!queryPanelEl.hidden) closeQuery();
+  closeSidePanels();
+  brainManagerEl.hidden = false;
+  brainManagerBrains = [];
+  brainManagerSelectedPath = null;
+  brainManagerSettings = null;
+  brainManagerLoadError = null;
+  setBrainManagerError(null);
+  setBrainManagerStatus(null);
+  syncOperationModal();
+  void loadBrainManager();
+}
+
+function selectedBrainManagerAgent(): string {
+  return brainManagerAgentEls.find((input) => input.checked)?.value ?? '';
+}
+
+async function saveBrainManagerSettings(): Promise<void> {
+  const settings = brainManagerSettings;
+  const language = brainManagerLanguageEl.value.trim();
+  const agent = selectedBrainManagerAgent();
+  if (!settings || !language || !agent) {
+    setBrainManagerError('Set a working language and AI runtime before saving.');
+    return;
+  }
+  brainManagerSaving = true;
+  setBrainManagerError(null);
+  setBrainManagerStatus('Saving locally…', true);
+  brainManagerSaveEl.disabled = true;
+  try {
+    brainManagerSettings = await invoke<BrainSettings>('brain_settings_update', {
+      vault: settings.path,
+      language,
+      agent,
+      purpose: brainManagerPurposeEl.value.trim(),
+    });
+    setBrainManagerStatus('Saved to this brain', false);
+  } catch (error) {
+    setBrainManagerError(String(error));
+    setBrainManagerStatus(null);
+  } finally {
+    brainManagerSaving = false;
+    brainManagerSaveEl.disabled = false;
+  }
+}
+
 function setNewVaultError(message: string | null): void {
   newVaultErrorEl.hidden = !message;
   newVaultErrorEl.textContent = message ?? '';
@@ -629,7 +815,6 @@ async function openVault(root: string): Promise<void> {
   vault = buildVault(files);
   issues = lintVault(vault);
   saveRecents([root, ...getRecents().filter((p) => p !== root)]);
-  recentPopEl.hidden = true;
   refreshRecentViews();
   vaultPathEl.textContent = `${basenameOf(root)} · ${vault.pages.length} pages`;
   vaultPathEl.title = root;
@@ -946,7 +1131,6 @@ function goHome(): void {
   }
   if (!queryPanelEl.hidden) closeQuery();
   closeSidePanels();
-  recentPopEl.hidden = true;
   deselect();
 
   // Home is Eva's launcher, not the graph's central index page. The brain
@@ -983,7 +1167,7 @@ function syncOpButtons(): void {
 }
 
 function operationModalIsOpen(): boolean {
-  return !queryPanelEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden;
+  return !queryPanelEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden;
 }
 
 function syncOperationModal(): void {
@@ -1646,11 +1830,19 @@ document.getElementById('open-vault')!.addEventListener('click', showBrainLibrar
 document.getElementById('empty-open')!.addEventListener('click', showBrainLibrary);
 document.getElementById('new-vault-button')!.addEventListener('click', showNewVault);
 document.getElementById('empty-new')!.addEventListener('click', showNewVault);
+document.getElementById('manage-brains')!.addEventListener('click', showBrainManager);
+document.getElementById('empty-manage')!.addEventListener('click', showBrainManager);
 document.getElementById('brain-library-close')!.addEventListener('click', closeBrainLibrary);
 brainLibraryImportEl.addEventListener('click', () => void importBrain());
+document.getElementById('brain-library-manage')!.addEventListener('click', showBrainManager);
 document.getElementById('brain-library-new')!.addEventListener('click', () => {
   closeBrainLibrary();
   showNewVault();
+});
+document.getElementById('brain-manager-close')!.addEventListener('click', closeBrainManager);
+brainManagerFormEl.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void saveBrainManagerSettings();
 });
 document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
 newVaultNameEl.addEventListener('input', () => {
@@ -1689,24 +1881,12 @@ document.querySelectorAll<HTMLButtonElement>('.panel-close[data-panel]').forEach
   btn.addEventListener('click', closeSidePanels),
 );
 
-recentToggleEl.addEventListener('click', (event) => {
-  event.stopPropagation();
-  recentPopEl.hidden = !recentPopEl.hidden;
-  if (!recentPopEl.hidden) renderRecentsInto(recentPopEl);
-  updateExclusions();
-});
 operationScrimEl.addEventListener('click', () => {
   // A review changes repository state, so it requires an explicit decision.
   if (!reviewEl.hidden) return;
   if (!queryPanelEl.hidden) closeQuery();
+  else if (!brainManagerEl.hidden) closeBrainManager();
   else closeSidePanels();
-});
-document.addEventListener('click', (event) => {
-  if (recentPopEl.hidden) return;
-  if (!recentPopEl.contains(event.target as Node)) {
-    recentPopEl.hidden = true;
-    updateExclusions();
-  }
 });
 
 svg.addEventListener('click', deselect);
@@ -1718,17 +1898,16 @@ document.addEventListener('keydown', (event) => {
     closeQuery();
     return;
   }
+  if (!brainManagerEl.hidden) {
+    closeBrainManager();
+    return;
+  }
   if (!brainLibraryEl.hidden) {
     closeBrainLibrary();
     return;
   }
   if (!newVaultEl.hidden) {
     closeNewVault();
-    return;
-  }
-  if (!recentPopEl.hidden) {
-    recentPopEl.hidden = true;
-    updateExclusions();
     return;
   }
   if (!lintPanelEl.hidden || !logPanelEl.hidden) {
