@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
@@ -1013,15 +1013,36 @@ fn run_codex_agent(
         if let Some(path) = schema_path.as_ref() {
             command.args(["--output-schema", &path.to_string_lossy()]);
         }
-        let output = command
-            .arg(prompt)
-            .output()
+        // `codex exec -` makes the prompt source unambiguous across CLI
+        // versions. Close stdin immediately after writing so Codex never waits
+        // for an interactive continuation from Eva's background process.
+        let mut child = command
+            .arg("-")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(|e| format!("failed to start Codex: {e}"))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(prompt.as_bytes())
+                .map_err(|e| format!("send prompt to Codex: {e}"))?;
+        }
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("wait for Codex: {e}"))?;
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let detail = stderr
+                .lines()
+                .rev()
+                .find(|line| !line.trim().is_empty())
+                .unwrap_or("Codex returned no diagnostic output")
+                .trim();
             return Err(format!(
                 "Codex exited with {}: {}",
                 output.status,
-                first_line(&String::from_utf8_lossy(&output.stderr))
+                detail
             ));
         }
         let message = fs::read_to_string(&output_path)
