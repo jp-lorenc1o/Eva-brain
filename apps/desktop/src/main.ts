@@ -77,6 +77,7 @@ const opIngestEl = document.getElementById('op-ingest') as HTMLButtonElement;
 const opQueryEl = document.getElementById('op-query') as HTMLButtonElement;
 const opLintEl = document.getElementById('op-lint') as HTMLButtonElement;
 const opLogEl = document.getElementById('op-log') as HTMLButtonElement;
+const reorganizeGraphEl = document.getElementById('reorganize-graph') as HTMLButtonElement;
 const ingestStatusEl = document.getElementById('ingest-status') as HTMLElement;
 const reviewEl = document.getElementById('review') as HTMLElement;
 const reviewTitleEl = document.getElementById('review-title') as HTMLElement;
@@ -252,6 +253,46 @@ function forcePanels() {
   return force;
 }
 const panelForce = forcePanels();
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+// Labels are the reading surface of a brain graph, so their width belongs in
+// the layout's physical model—not merely in the SVG paint. The cap keeps a
+// single long title from claiming the entire canvas.
+function nodeCollisionRadius(node: Pick<SimNode, 'title'>): number {
+  return Math.min(150, Math.max(42, 20 + node.title.length * 3.1));
+}
+
+function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): void {
+  for (const [index, node] of nodes.entries()) {
+    const radius = 86 * Math.sqrt(index + 0.5);
+    node.x = center.x + radius * Math.cos(index * GOLDEN_ANGLE);
+    node.y = center.y + radius * Math.sin(index * GOLDEN_ANGLE);
+    node.vx = 0;
+    node.vy = 0;
+  }
+}
+
+function reorganizeGraph(): void {
+  if (!simulation || simNodes.length === 0) return;
+  const center = usableCenter();
+  for (const node of simNodes) {
+    node.fx = null;
+    node.fy = null;
+  }
+  seedGraphNodes(simNodes, center);
+  svg.querySelectorAll('.node.pinned').forEach((node) => node.classList.remove('pinned'));
+  centerX.x(center.x);
+  centerY.y(center.y);
+
+  if (reducedMotion) {
+    simulation.stop();
+    simulation.alpha(1).tick(420);
+    refreshPositions?.();
+  } else {
+    simulation.alpha(1).alphaTarget(AMBIENT_ALPHA).restart();
+  }
+  setIngestStatus('Graph reorganized', false);
+}
 
 async function collectMarkdown(root: string, rel = ''): Promise<VaultFile[]> {
   const files: VaultFile[] = [];
@@ -578,11 +619,10 @@ function renderGraph(graph: Graph): void {
   // which strands the cluster along the top edge once the settle phase is
   // spent fighting the panel force.
   const center = usableCenter();
-  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
   const nodes: SimNode[] = graph.nodes.map((n, i) => ({
     ...n,
-    x: center.x + 42 * Math.sqrt(i + 0.5) * Math.cos(i * GOLDEN_ANGLE),
-    y: center.y + 42 * Math.sqrt(i + 0.5) * Math.sin(i * GOLDEN_ANGLE),
+    x: center.x + 86 * Math.sqrt(i + 0.5) * Math.cos(i * GOLDEN_ANGLE),
+    y: center.y + 86 * Math.sqrt(i + 0.5) * Math.sin(i * GOLDEN_ANGLE),
   }));
   simNodes = nodes;
   const links: SimulationLinkDatum<SimNode>[] = graph.edges.map((e) => ({
@@ -654,20 +694,26 @@ function renderGraph(graph: Graph): void {
   };
   refreshPositions = updatePositions;
 
-  centerX = forceX<SimNode>(center.x).strength(0.045);
-  centerY = forceY<SimNode>(center.y).strength(0.055);
+  centerX = forceX<SimNode>(center.x).strength(0.032);
+  centerY = forceY<SimNode>(center.y).strength(0.038);
 
   simulation = forceSimulation(nodes)
     .force(
       'link',
       forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
         .id((d) => d.id)
-        .distance(95),
+        .distance(160),
     )
-    .force('charge', forceManyBody().strength(-320))
+    .force('charge', forceManyBody().strength(-520))
     .force('x', centerX)
     .force('y', centerY)
-    .force('collide', forceCollide(30))
+    .force(
+      'collide',
+      forceCollide<SimNode>()
+        .radius(nodeCollisionRadius)
+        .strength(0.95)
+        .iterations(2),
+    )
     .force('panels', panelForce)
     .on('tick', updatePositions);
 
@@ -1514,6 +1560,7 @@ queryFormEl.addEventListener('submit', (event) => {
 querySaveEl.addEventListener('click', () => void saveQueryAsAnalysis());
 opLintEl.addEventListener('click', () => toggleSidePanel('lint'));
 opLogEl.addEventListener('click', () => toggleSidePanel('log'));
+reorganizeGraphEl.addEventListener('click', reorganizeGraph);
 document.getElementById('review-accept')!.addEventListener('click', () => void decideReview(true));
 document.getElementById('review-reject')!.addEventListener('click', () => void decideReview(false));
 document.querySelectorAll<HTMLButtonElement>('.panel-close[data-panel]').forEach((btn) =>
