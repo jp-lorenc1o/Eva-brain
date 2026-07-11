@@ -29,11 +29,12 @@ npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ## First vault
 
 Choose **New vault** from the opening screen, select a parent folder, and name
-the knowledge project. Eva creates a local Git repository, writes the V1
-contract and starter wiki, then opens the graph. Select **Ingest** to add the
-first source. Select **Query** to ask the maintained wiki a question; useful
-answers can be saved as a reviewable analysis page. Use **Open vault** for an
-existing Markdown vault.
+the knowledge project. The setup sheet asks for its working language, AI
+runtime, and optional purpose; Eva stores that profile in `EVA.md`, creates a
+local Git repository and starter wiki, then opens the graph. Select **Ingest**
+to add the first source. Select **Query** to ask the maintained wiki a
+question; useful answers can be saved as a reviewable analysis page. Use
+**Open vault** for an existing Markdown vault.
 
 ## Health Check
 

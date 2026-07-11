@@ -9,14 +9,21 @@
   <body>
     <svg id="graph" aria-label="Vault graph"></svg>
     <section id="empty" class="glass" aria-label="No vault open">
-      <h1>eva-wiki</h1>
+      <p class="empty-kicker">LLM Wiki</p>
+      <h1>Begin with a vault</h1>
       <p class="empty-desc">
-        Open a folder of markdown pages to read it as a graph — wiki-links
-        become edges, frontmatter types become inks.
+        Eva turns curated sources into a maintained, interlinked knowledge base.
+        Start a new one or open a wiki you already keep on disk.
       </p>
-      <div class="empty-actions">
-        <button id="empty-new" class="btn-stamp">New vault</button>
-        <button id="empty-open" class="btn-stamp aux">Open existing</button>
+      <div class="launch-menu">
+        <button id="empty-new" class="launch-choice primary" type="button">
+          <span class="launch-choice-title">Create a new wiki</span>
+          <span class="launch-choice-detail">Choose its language, purpose, and AI setup.</span>
+        </button>
+        <button id="empty-open" class="launch-choice" type="button">
+          <span class="launch-choice-title">Open an existing vault</span>
+          <span class="launch-choice-detail">Read a local folder of Markdown pages as a graph.</span>
+        </button>
       </div>
       <div id="recent"></div>
     </section>
@@ -106,12 +113,34 @@
           <p class="form-kicker">First page</p>
           <h2 id="new-vault-title">New vault</h2>
           <p class="form-copy">
-            Eva will create a local Git repository with the V1 wiki structure.
-            Nothing leaves your computer until you add a remote.
+            Set the frame for this knowledge project. Eva stores these choices
+            in the local schema that your AI reads before it works.
           </p>
         </div>
         <label class="form-label" for="new-vault-name">Vault name</label>
         <input id="new-vault-name" class="text-input" type="text" maxlength="80" autocomplete="off" placeholder="Research atlas" />
+        <div class="setup-grid">
+          <div>
+            <label class="form-label" for="new-vault-language">Working language</label>
+            <input id="new-vault-language" class="text-input compact" type="text" list="vault-languages" maxlength="48" autocomplete="off" value="English" />
+            <datalist id="vault-languages">
+              <option value="English"></option>
+              <option value="Español"></option>
+              <option value="Français"></option>
+              <option value="Deutsch"></option>
+              <option value="Português"></option>
+            </datalist>
+          </div>
+          <div>
+            <label class="form-label" for="new-vault-agent">AI runtime</label>
+            <select id="new-vault-agent" class="text-input compact">
+              <option value="claude">Claude CLI</option>
+            </select>
+            <p class="field-hint">More runtimes can use this same vault later.</p>
+          </div>
+        </div>
+        <label class="form-label" for="new-vault-purpose">What is this wiki for? <span class="optional">Optional</span></label>
+        <textarea id="new-vault-purpose" class="purpose-input" rows="2" maxlength="240" placeholder="Track a research topic, plan a trip, understand a company…"></textarea>
         <div class="location-field">
           <div>
             <span class="form-label">Location</span>

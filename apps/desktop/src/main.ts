@@ -95,6 +95,9 @@ const querySaveEl = document.getElementById('query-save') as HTMLButtonElement;
 const newVaultEl = document.getElementById('new-vault') as HTMLElement;
 const newVaultFormEl = document.getElementById('new-vault-form') as HTMLFormElement;
 const newVaultNameEl = document.getElementById('new-vault-name') as HTMLInputElement;
+const newVaultLanguageEl = document.getElementById('new-vault-language') as HTMLInputElement;
+const newVaultAgentEl = document.getElementById('new-vault-agent') as HTMLSelectElement;
+const newVaultPurposeEl = document.getElementById('new-vault-purpose') as HTMLTextAreaElement;
 const newVaultLocationEl = document.getElementById('new-vault-location') as HTMLElement;
 const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElement;
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
@@ -352,13 +355,17 @@ function validVaultName(name: string): boolean {
 }
 
 function updateNewVaultCreateState(): void {
-  newVaultCreateEl.disabled = !newVaultParent || !validVaultName(newVaultNameEl.value);
+  newVaultCreateEl.disabled =
+    !newVaultParent || !validVaultName(newVaultNameEl.value) || !newVaultLanguageEl.value.trim();
 }
 
 function closeNewVault(): void {
   newVaultEl.hidden = true;
   newVaultParent = null;
   newVaultNameEl.value = '';
+  newVaultLanguageEl.value = 'English';
+  newVaultAgentEl.value = 'claude';
+  newVaultPurposeEl.value = '';
   newVaultLocationEl.textContent = 'Choose a parent folder';
   newVaultLocationEl.removeAttribute('title');
   setNewVaultError(null);
@@ -370,6 +377,9 @@ function showNewVault(): void {
   newVaultEl.hidden = false;
   newVaultParent = null;
   newVaultNameEl.value = '';
+  newVaultLanguageEl.value = 'English';
+  newVaultAgentEl.value = 'claude';
+  newVaultPurposeEl.value = '';
   newVaultLocationEl.textContent = 'Choose a parent folder';
   newVaultLocationEl.removeAttribute('title');
   setNewVaultError(null);
@@ -390,15 +400,22 @@ async function chooseNewVaultLocation(): Promise<void> {
 
 async function createNewVault(): Promise<void> {
   const name = newVaultNameEl.value.trim();
-  if (!newVaultParent || !validVaultName(name)) {
-    setNewVaultError('Choose a location and enter a single folder name.');
+  const language = newVaultLanguageEl.value.trim();
+  if (!newVaultParent || !validVaultName(name) || !language) {
+    setNewVaultError('Choose a location, name the vault, and set its working language.');
     updateNewVaultCreateState();
     return;
   }
   newVaultCreateEl.disabled = true;
   setNewVaultError(null);
   try {
-    const root = await invoke<string>('vault_create', { parent: newVaultParent, name });
+    const root = await invoke<string>('vault_create', {
+      parent: newVaultParent,
+      name,
+      language,
+      agent: newVaultAgentEl.value,
+      purpose: newVaultPurposeEl.value.trim(),
+    });
     closeNewVault();
     await openVault(root);
     setIngestStatus('Vault created · add your first source with Ingest', false);
@@ -1352,6 +1369,14 @@ document.getElementById('empty-new')!.addEventListener('click', showNewVault);
 document.getElementById('new-vault-location-button')!.addEventListener('click', () => void chooseNewVaultLocation());
 document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
 newVaultNameEl.addEventListener('input', () => {
+  setNewVaultError(null);
+  updateNewVaultCreateState();
+});
+newVaultLanguageEl.addEventListener('input', () => {
+  setNewVaultError(null);
+  updateNewVaultCreateState();
+});
+newVaultAgentEl.addEventListener('change', () => {
   setNewVaultError(null);
   updateNewVaultCreateState();
 });

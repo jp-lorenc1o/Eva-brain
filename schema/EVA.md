@@ -71,6 +71,14 @@ updated: 2026-07-11
   entity, concept, or analysis. Use it whenever a page contains source-derived
   claims.
 
+## Vault profile
+
+New vaults record their working language, selected agent runtime, and optional
+purpose at the end of this document. Treat that profile as an instruction:
+write pages in the working language unless the human asks otherwise, and use
+the stated purpose to calibrate what is worth preserving. Humans can edit the
+profile as their project evolves.
+
 Keep provenance close to knowledge. A summary must identify its raw document;
 an analysis must identify the pages or sources it synthesizes. Never claim a
 source says something it does not say, and mark unresolved conflicts instead

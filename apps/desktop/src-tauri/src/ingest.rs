@@ -16,6 +16,12 @@ const CLAUDE_MD: &str = include_str!("../../../../schema/CLAUDE.md");
 const INDEX_MD: &str = include_str!("../../../../templates/vault/index.md");
 const LOG_MD: &str = include_str!("../../../../templates/vault/log.md");
 
+struct VaultProfile {
+    language: String,
+    agent: String,
+    purpose: String,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Job {
@@ -189,13 +195,50 @@ fn vault_dir_name(name: &str) -> Result<&str, String> {
     Ok(name)
 }
 
+fn profile_text(value: &str, field: &str, max: usize, required: bool) -> Result<String, String> {
+    let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if required && value.is_empty() {
+        return Err(format!("choose a {field}"));
+    }
+    if value.chars().count() > max {
+        return Err(format!("{field} must be {max} characters or fewer"));
+    }
+    Ok(value)
+}
+
+fn vault_profile(language: &str, agent: &str, purpose: &str) -> Result<VaultProfile, String> {
+    if agent != "claude" {
+        return Err("this version of Eva supports the Claude CLI runtime".into());
+    }
+    Ok(VaultProfile {
+        language: profile_text(language, "working language", 48, true)?,
+        agent: "Claude CLI".into(),
+        purpose: profile_text(purpose, "purpose", 240, false)?,
+    })
+}
+
+fn eva_schema(profile: Option<&VaultProfile>) -> String {
+    let Some(profile) = profile else {
+        return EVA_MD.into();
+    };
+    let purpose = if profile.purpose.is_empty() {
+        "Not specified yet.".to_string()
+    } else {
+        profile.purpose.clone()
+    };
+    format!(
+        "{EVA_MD}\n\n### Active profile\n\n- **Working language:** {}\n- **Agent runtime:** {}\n- **Purpose:** {}\n\nWrite and maintain wiki pages in the working language unless the human asks otherwise.\n",
+        profile.language, profile.agent, purpose
+    )
+}
+
 /// Write only missing Eva infrastructure, then commit exactly those files.
 /// Keeping this separate from the Tauri command lets both a newly-created
 /// vault and a pre-existing Git-root vault receive the same V1 baseline.
-fn bootstrap_vault(root: &Path) -> Result<bool, String> {
+fn bootstrap_vault(root: &Path, profile: Option<&VaultProfile>) -> Result<bool, String> {
     let mut staged: Vec<&str> = vec!["add"];
     if !root.join("EVA.md").exists() {
-        fs::write(root.join("EVA.md"), EVA_MD).map_err(|e| e.to_string())?;
+        fs::write(root.join("EVA.md"), eva_schema(profile)).map_err(|e| e.to_string())?;
         staged.push("EVA.md");
     }
     if !root.join("AGENTS.md").exists() {
@@ -223,7 +266,7 @@ fn bootstrap_vault(root: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-fn create_vault(parent: &Path, name: &str) -> Result<PathBuf, String> {
+fn create_vault(parent: &Path, name: &str, profile: &VaultProfile) -> Result<PathBuf, String> {
     let name = vault_dir_name(name)?;
     let parent = parent
         .canonicalize()
@@ -257,7 +300,7 @@ fn create_vault(parent: &Path, name: &str) -> Result<PathBuf, String> {
         }
     }
 
-    if let Err(error) = bootstrap_vault(&root) {
+    if let Err(error) = bootstrap_vault(&root, Some(profile)) {
         // `root` was created by this command, so cleanup cannot touch an
         // existing vault if Git or the initial commit is unavailable.
         let _ = fs::remove_dir_all(&root);
@@ -1069,12 +1112,19 @@ pub fn ensure_schema(vault: String) -> Result<bool, String> {
         Ok(r) => r,
         Err(_) => return Ok(false), // not an agent-managed vault: leave untouched
     };
-    bootstrap_vault(&root)
+    bootstrap_vault(&root, None)
 }
 
 #[tauri::command]
-pub fn vault_create(parent: String, name: String) -> Result<String, String> {
-    let root = create_vault(Path::new(&parent), &name)?;
+pub fn vault_create(
+    parent: String,
+    name: String,
+    language: String,
+    agent: String,
+    purpose: String,
+) -> Result<String, String> {
+    let profile = vault_profile(&language, &agent, &purpose)?;
+    let root = create_vault(Path::new(&parent), &name, &profile)?;
     Ok(root.to_string_lossy().to_string())
 }
 
@@ -1179,7 +1229,7 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, vault_dir_name, QueryAnswer, QueryCitation};
+    use super::{analysis_markdown, eva_schema, vault_dir_name, vault_profile, QueryAnswer, QueryCitation};
 
     #[test]
     fn accepts_a_single_human_readable_folder_name() {
@@ -1205,6 +1255,15 @@ mod tests {
         let markdown = analysis_markdown("What compounds?", &answer, "Analysis — What compounds?");
         assert!(markdown.contains("sources: raw/letter.txt"));
         assert!(markdown.contains("[[concepts/compounding]]"));
+    }
+
+    #[test]
+    fn new_vault_profile_is_written_into_the_agent_schema() {
+        let profile = vault_profile("Español", "claude", "Investigación de mercado").unwrap();
+        let schema = eva_schema(Some(&profile));
+        assert!(schema.contains("**Working language:** Español"));
+        assert!(schema.contains("**Agent runtime:** Claude CLI"));
+        assert!(schema.contains("**Purpose:** Investigación de mercado"));
     }
 }
 
