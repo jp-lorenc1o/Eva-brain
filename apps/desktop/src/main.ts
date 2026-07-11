@@ -65,6 +65,7 @@ const recentEl = document.getElementById('recent') as HTMLElement;
 const recentPopEl = document.getElementById('recent-pop') as HTMLElement;
 const recentToggleEl = document.getElementById('recent-toggle') as HTMLButtonElement;
 const commandEl = document.getElementById('command') as HTMLElement;
+const operationScrimEl = document.getElementById('operation-scrim') as HTMLElement;
 const detailEl = document.getElementById('detail') as HTMLElement;
 const legendEl = document.getElementById('legend') as HTMLElement;
 const lintPanelEl = document.getElementById('lint-panel') as HTMLElement;
@@ -142,7 +143,7 @@ let exclusionRects: Rect[] = [];
 
 function updateExclusions(): void {
   exclusionRects = [...document.querySelectorAll<HTMLElement>('.glass')]
-    .filter((el) => !el.hidden)
+    .filter((el) => !el.hidden && !el.classList.contains('operation-modal'))
     .map((el) => {
       const r = el.getBoundingClientRect();
       return {
@@ -940,11 +941,22 @@ function syncOpButtons(): void {
   opLogEl.setAttribute('aria-pressed', String(!logPanelEl.hidden));
 }
 
+function operationModalIsOpen(): boolean {
+  return !queryPanelEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden;
+}
+
+function syncOperationModal(): void {
+  const open = operationModalIsOpen();
+  operationScrimEl.hidden = !open;
+  document.body.classList.toggle('operation-modal-open', open);
+  updateExclusions();
+}
+
 function closeSidePanels(): void {
   lintPanelEl.hidden = true;
   logPanelEl.hidden = true;
   syncOpButtons();
-  updateExclusions();
+  syncOperationModal();
 }
 
 function toggleSidePanel(which: 'lint' | 'log'): void {
@@ -954,11 +966,13 @@ function toggleSidePanel(which: 'lint' | 'log'): void {
   other.hidden = true;
   target.hidden = !opening;
   if (opening) {
+    if (!queryPanelEl.hidden) closeQuery();
     if (which === 'lint') renderLintPanel();
     else renderLogPanel();
+    window.setTimeout(() => target.querySelector<HTMLButtonElement>('.panel-close')?.focus(), 0);
   }
   syncOpButtons();
-  updateExclusions();
+  syncOperationModal();
 }
 
 interface HealthFinding {
@@ -1106,14 +1120,20 @@ function renderLintPanel(): void {
       const name = document.createElement('button');
       name.className = 'lint-page-name';
       name.textContent = page.id;
-      name.addEventListener('click', () => select(page.id));
+      name.addEventListener('click', () => {
+        closeSidePanels();
+        select(page.id);
+      });
       group.appendChild(name);
       for (const issue of pageIssues) {
         const row = document.createElement('button');
         row.className = `issue issue-${issue.rule}`;
         row.dataset.rule = issue.rule;
         row.textContent = issue.message;
-        row.addEventListener('click', () => select(issue.page));
+        row.addEventListener('click', () => {
+          closeSidePanels();
+          select(issue.page);
+        });
         group.appendChild(row);
       }
       lintBodyEl.appendChild(group);
@@ -1299,11 +1319,12 @@ function closeQuery(): void {
   latestQuery = null;
   setQueryError(null);
   setQueryRunning(false);
-  updateExclusions();
+  syncOperationModal();
 }
 
 function showQuery(): void {
   if (!currentVault) return;
+  closeSidePanels();
   queryPanelEl.hidden = false;
   queryQuestionEl.value = '';
   queryResultEl.hidden = true;
@@ -1311,7 +1332,7 @@ function showQuery(): void {
   latestQuery = null;
   setQueryError(null);
   setQueryRunning(false);
-  updateExclusions();
+  syncOperationModal();
   window.setTimeout(() => queryQuestionEl.focus(), 0);
 }
 
@@ -1420,6 +1441,8 @@ interface ChangeReview {
 }
 
 function showReview(p: ChangeReview): void {
+  if (!queryPanelEl.hidden) closeQuery();
+  closeSidePanels();
   reviewId = p.id;
   reviewKind = p.kind;
   reviewTitleEl.textContent = p.kind === 'ingest' ? 'Review ingest' : 'Review analysis';
@@ -1457,7 +1480,7 @@ function showReview(p: ChangeReview): void {
     reviewPatchEl.appendChild(span);
   }
   reviewEl.hidden = false;
-  updateExclusions();
+  syncOperationModal();
 }
 
 async function decideReview(accept: boolean): Promise<void> {
@@ -1467,7 +1490,7 @@ async function decideReview(accept: boolean): Promise<void> {
   reviewId = null;
   reviewKind = null;
   reviewEl.hidden = true;
-  updateExclusions();
+  syncOperationModal();
   try {
     if (kind === 'ingest') {
       await invoke('ingest_decide', { jobId: id, accept });
@@ -1481,7 +1504,7 @@ async function decideReview(accept: boolean): Promise<void> {
     reviewId = id;
     reviewKind = kind;
     reviewEl.hidden = false;
-    updateExclusions();
+    syncOperationModal();
   }
 }
 
@@ -1627,6 +1650,12 @@ recentToggleEl.addEventListener('click', (event) => {
   recentPopEl.hidden = !recentPopEl.hidden;
   if (!recentPopEl.hidden) renderRecentsInto(recentPopEl);
   updateExclusions();
+});
+operationScrimEl.addEventListener('click', () => {
+  // A review changes repository state, so it requires an explicit decision.
+  if (!reviewEl.hidden) return;
+  if (!queryPanelEl.hidden) closeQuery();
+  else closeSidePanels();
 });
 document.addEventListener('click', (event) => {
   if (recentPopEl.hidden) return;

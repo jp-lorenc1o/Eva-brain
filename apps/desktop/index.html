@@ -49,8 +49,9 @@
       </button>
     </header>
     <div id="ingest-status" role="status" aria-live="polite" hidden></div>
+    <div id="operation-scrim" aria-hidden="true" hidden></div>
     <div id="recent-pop" class="glass" hidden></div>
-    <aside id="lint-panel" class="glass dock-left" hidden aria-label="Brain health">
+    <aside id="lint-panel" class="glass operation-modal" hidden aria-label="Brain health" role="dialog" aria-modal="true">
       <button class="panel-close" data-panel="lint" aria-label="Close health check">&#10005;</button>
       <div class="panel-head">
         <h2>Health</h2>
@@ -58,7 +59,7 @@
       </div>
       <div id="lint-body"></div>
     </aside>
-    <aside id="log-panel" class="glass dock-left" hidden aria-label="Brain log">
+    <aside id="log-panel" class="glass operation-modal" hidden aria-label="Brain log" role="dialog" aria-modal="true">
       <button class="panel-close" data-panel="log" aria-label="Close log">&#10005;</button>
       <div class="panel-head">
         <h2>Log</h2>
@@ -70,7 +71,7 @@
       <button id="detail-close" class="panel-close" aria-label="Close details">&#10005;</button>
       <div id="sidebar"></div>
     </aside>
-    <aside id="review" class="glass" hidden aria-label="Change review">
+    <aside id="review" class="glass operation-modal" hidden aria-label="Change review" role="dialog" aria-modal="true">
       <div class="panel-head">
         <h2 id="review-title">Review changes</h2>
         <p class="panel-sub" id="review-sub"></p>
@@ -82,7 +83,7 @@
         <button id="review-reject" class="btn-stamp reject">Reject</button>
       </div>
     </aside>
-    <aside id="query-panel" class="glass" hidden aria-label="Query brain">
+    <aside id="query-panel" class="glass operation-modal" hidden aria-label="Query brain" role="dialog" aria-modal="true">
       <button id="query-close" class="panel-close" aria-label="Close query">&#10005;</button>
       <div class="panel-head">
         <p class="form-kicker">Ask the record</p>
