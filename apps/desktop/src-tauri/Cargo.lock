@@ -719,7 +719,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "eva-wiki-desktop"
+name = "eva"
 version = "0.1.0"
 dependencies = [
  "serde",
