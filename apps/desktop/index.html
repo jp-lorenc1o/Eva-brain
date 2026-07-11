@@ -115,25 +115,25 @@
     <aside id="profile-tools" class="glass operation-modal" hidden aria-label="Brain tools" role="dialog" aria-modal="true" aria-labelledby="profile-tools-title">
       <button id="profile-tools-close" class="panel-close" type="button" aria-label="Close">&#10005;</button>
       <div class="panel-head">
-        <p id="profile-tools-kicker" class="form-kicker">Brain tools</p>
-        <h2 id="profile-tools-title">Useful work</h2>
+        <p id="profile-tools-kicker" class="form-kicker">Eva</p>
+        <h2 id="profile-tools-title"></h2>
         <p id="profile-tools-copy" class="form-copy"></p>
       </div>
       <div id="profile-tools-list" class="profile-tool-list"></div>
       <button id="profile-tools-other-toggle" class="profile-tools-other-toggle" type="button" aria-expanded="false">Other tools</button>
       <section id="profile-tools-other" class="profile-tools-other" hidden aria-label="Other profile tools">
-        <p class="profile-tools-other-copy">Use any tool with this brain. Eva will work only from the brain you have open.</p>
+        <p class="profile-tools-other-copy" data-ui="tool.otherCopy">Use any tool with this brain. Eva will work only from the brain you have open.</p>
         <div id="profile-tools-other-list" class="profile-tools-other-list"></div>
       </section>
       <section id="profile-tools-config" class="profile-tools-config" hidden aria-live="polite">
         <p id="profile-tools-config-origin" class="profile-tools-config-origin"></p>
         <h3 id="profile-tools-config-title"></h3>
         <p id="profile-tools-config-copy" class="profile-tools-config-copy"></p>
-        <label class="form-label" for="profile-tools-focus">Topics or focus <span class="optional">Optional</span></label>
-        <textarea id="profile-tools-focus" class="query-input profile-tools-focus" rows="2" maxlength="400" placeholder="Leave empty to use the whole brain."></textarea>
+        <label class="form-label" for="profile-tools-focus"><span data-ui="tool.focus">Topics or focus</span> <span class="optional" data-i18n="common.optional">Optional</span></label>
+        <textarea id="profile-tools-focus" class="query-input profile-tools-focus" rows="2" maxlength="400" data-ui-placeholder="tool.focusPlaceholder" placeholder="Leave empty to use the whole brain."></textarea>
         <div class="profile-tools-config-grid">
           <label id="profile-tools-format-field" class="profile-tools-config-field" hidden>
-            <span class="form-label">Exam format</span>
+            <span class="form-label" data-ui="tool.format">Exam format</span>
             <select id="profile-tools-format" class="text-input compact"></select>
           </label>
           <label id="profile-tools-count-field" class="profile-tools-config-field" hidden>
@@ -149,11 +149,11 @@
       <p id="profile-tools-status" class="query-status" role="status" aria-live="polite" hidden></p>
       <section id="profile-tools-result" class="profile-tool-result" hidden aria-live="polite">
         <div class="query-answer-head">
-          <h3 id="profile-tools-result-title">Result</h3>
-          <button id="profile-tools-save" class="btn-stamp aux" type="button">Save as analysis</button>
+          <h3 id="profile-tools-result-title" data-ui="tool.result">Result</h3>
+          <button id="profile-tools-save" class="btn-stamp aux" type="button" data-i18n="query.save">Save as analysis</button>
         </div>
         <pre id="profile-tools-content" class="query-answer"></pre>
-        <h3 class="query-evidence-title">Evidence</h3>
+        <h3 class="query-evidence-title" data-i18n="query.evidence">Evidence</h3>
         <div id="profile-tools-citations" class="query-citations"></div>
       </section>
     </aside>
@@ -189,7 +189,7 @@
             <span id="brain-manager-name" class="brain-manager-name"></span>
             <span id="brain-manager-path" class="brain-manager-path"></span>
           </div>
-          <label class="form-label" for="brain-manager-profile">Brain profile</label>
+          <label class="form-label" for="brain-manager-profile" data-ui="profile.field">Brain profile</label>
           <select id="brain-manager-profile" class="text-input compact"></select>
           <p id="brain-manager-modules" class="profile-modules"></p>
           <label class="form-label" for="brain-manager-language" data-i18n="manager.language">Working language</label>
@@ -241,7 +241,7 @@
         <label class="form-label" for="new-vault-name" data-i18n="new.name">Brain name</label>
         <input id="new-vault-name" class="text-input" type="text" maxlength="80" autocomplete="off" data-i18n-placeholder="new.namePlaceholder" placeholder="Research atlas" />
         <div class="brain-profile-field">
-          <label class="form-label" for="new-vault-profile">Brain profile</label>
+          <label class="form-label" for="new-vault-profile" data-ui="profile.field">Brain profile</label>
           <select id="new-vault-profile" class="text-input compact"></select>
           <p id="new-vault-profile-detail" class="profile-detail"></p>
         </div>

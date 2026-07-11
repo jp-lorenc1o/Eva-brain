@@ -12,7 +12,9 @@ import {
   locales,
   setAppLanguage,
   t,
+  ui,
   type AppLanguage,
+  type ChromeKey,
   type TranslationKey,
 } from './i18n';
 import {
@@ -54,85 +56,64 @@ const TYPE_ORDER = ['index', 'entity', 'concept', 'summary', 'analysis', 'person
 const BRAIN_PROFILES = [
   {
     id: 'personal',
-    label: 'Personal',
-    detail: 'Goals, observations, reflections, and a private timeline.',
     modules: ['goals', 'observations', 'journal', 'timeline'],
     tools: [{
-      id: 'personal-review', label: 'Reflection', detail: 'Trace patterns, movement, and questions across the record.',
-      focusPlaceholder: 'Optional: a period, theme, or question to reflect on…',
+      id: 'personal-review',
     }],
     purposeLabel: 'What would you like to track?',
     purposePlaceholder: 'Goals, habits, health observations, or a question you want to understand…',
   },
   {
     id: 'research',
-    label: 'Research',
-    detail: 'A thesis, evidence, contradictions, and open questions.',
     modules: ['thesis', 'evidence', 'contradictions', 'bibliography'],
     tools: [{
-      id: 'evidence-map', label: 'Evidence map', detail: 'Lay out claims, support, challenges, and the next question.',
-      focusPlaceholder: 'Optional: a thesis, claim, or source set to focus on…',
+      id: 'evidence-map',
     }],
     purposeLabel: 'What question are you investigating?',
     purposePlaceholder: 'The topic, question, or thesis you want this brain to develop…',
   },
   {
     id: 'reading',
-    label: 'Reading companion',
-    detail: 'Chapters, characters, plot threads, themes, and chronology.',
     modules: ['chapters', 'characters', 'threads', 'themes'],
     tools: [{
-      id: 'reading-threads', label: 'Threads map', detail: 'Connect characters, events, and themes without inventing later material.',
-      focusPlaceholder: 'Optional: a character, chapter, or theme to focus on…',
+      id: 'reading-threads',
     }],
     purposeLabel: 'Which book or text are you following?',
     purposePlaceholder: 'Title, author, and any spoiler boundary you want Eva to respect…',
   },
   {
     id: 'business',
-    label: 'Business record',
-    detail: 'Projects, decisions, meetings, risks, and local operating context.',
     modules: ['projects', 'decisions', 'meetings', 'risks'],
     tools: [{
-      id: 'decision-brief', label: 'Decision brief', detail: 'Bring together options, owners, evidence, risks, and open questions.',
-      focusPlaceholder: 'Optional: a decision, project, or meeting thread to focus on…',
+      id: 'decision-brief',
     }],
     purposeLabel: 'What business context should this brain maintain?',
     purposePlaceholder: 'A team, company, customer area, project, or decision space…',
   },
   {
     id: 'planning',
-    label: 'Planning',
-    detail: 'Objectives, constraints, options, decisions, and a living plan.',
     modules: ['objectives', 'constraints', 'options', 'timeline'],
     tools: [{
-      id: 'options-review', label: 'Options review', detail: 'Compare live choices against objectives, constraints, and trade-offs.',
-      focusPlaceholder: 'Optional: an objective, decision, or set of options to focus on…',
+      id: 'options-review',
     }],
     purposeLabel: 'What are you planning?',
     purposePlaceholder: 'A trip, project, purchase, move, or other decision you are working through…',
   },
   {
     id: 'course',
-    label: 'Course and learning',
-    detail: 'Concepts, materials, practice gaps, and revision prompts.',
     modules: ['concepts', 'materials', 'practice', 'revision'],
     tools: [
       {
-        id: 'flashcards', label: 'Flashcards', detail: 'Create active-recall cards from the material already in this brain.',
-        focusPlaceholder: 'Optional: topics or chapters to include…',
-        countLabel: 'Cards', countOptions: [10, 15, 20],
+        id: 'flashcards', countOptions: [10, 15, 20],
       },
       {
-        id: 'practice-exam', label: 'Practice exam', detail: 'Build a mixed exam with an evidence-grounded answer key.',
-        focusPlaceholder: 'Optional: topics or chapters to test…',
-        formatLabel: 'Exam format', formatOptions: [
+        id: 'practice-exam', formatOptions: [
           { value: 'mixed', label: 'Mixed' },
           { value: 'multiple-choice', label: 'Multiple choice' },
           { value: 'written', label: 'Written responses' },
           { value: 'short-answer', label: 'Short answer' },
         ],
-        countLabel: 'Questions', countOptions: [6, 8, 10, 12],
+        countOptions: [6, 8, 10, 12],
       },
     ],
     purposeLabel: 'What are you learning?',
@@ -140,12 +121,8 @@ const BRAIN_PROFILES = [
   },
   {
     id: 'blank',
-    label: 'Blank / custom',
-    detail: 'A clean Eva standard with only the structure you choose to add.',
     modules: ['knowledge-base'],
     tools: [],
-    purposeLabel: 'What is this brain for?',
-    purposePlaceholder: 'Track a research topic, plan a trip, understand a company…',
   },
 ] as const;
 
@@ -154,6 +131,14 @@ type ProfileToolId = (typeof BRAIN_PROFILES)[number]['tools'][number]['id'];
 
 function profileDefinition(id: string): (typeof BRAIN_PROFILES)[number] {
   return BRAIN_PROFILES.find((profile) => profile.id === id) ?? BRAIN_PROFILES.at(-1)!;
+}
+
+function profileLabel(id: BrainProfileId): string {
+  return ui(`profile.${id}` as ChromeKey);
+}
+
+function toolLabel(id: ProfileToolId): string {
+  return ui(`tool.${id}` as ChromeKey);
 }
 
 const colorFor = (type: string | null): string =>
@@ -346,7 +331,7 @@ function populateBrainProfileOptions(select: HTMLSelectElement, selected: string
   for (const profile of BRAIN_PROFILES) {
     const option = document.createElement('option');
     option.value = profile.id;
-    option.textContent = profile.label;
+    option.textContent = profileLabel(profile.id);
     select.appendChild(option);
   }
   select.value = profileDefinition(selected).id;
@@ -358,9 +343,9 @@ function selectedNewVaultProfile(): BrainProfileId {
 
 function updateNewVaultProfileFrame(): void {
   const profile = profileDefinition(selectedNewVaultProfile());
-  newVaultProfileDetailEl.textContent = profile.detail;
-  newVaultPurposeLabelEl.textContent = profile.purposeLabel;
-  newVaultPurposeEl.placeholder = profile.purposePlaceholder;
+  newVaultProfileDetailEl.textContent = ui('profile.detail');
+  newVaultPurposeLabelEl.textContent = t('new.purpose');
+  newVaultPurposeEl.placeholder = t('new.purposePlaceholder');
 }
 
 function applyInterfaceLanguage(): void {
@@ -377,6 +362,12 @@ function applyInterfaceLanguage(): void {
   document.querySelectorAll<HTMLElement>('[data-i18n-aria-label]').forEach((element) => {
     element.setAttribute('aria-label', t(element.dataset.i18nAriaLabel as TranslationKey));
   });
+  document.querySelectorAll<HTMLElement>('[data-ui]').forEach((element) => {
+    element.textContent = ui(element.dataset.ui as ChromeKey);
+  });
+  document.querySelectorAll<HTMLElement>('[data-ui-placeholder]').forEach((element) => {
+    element.setAttribute('placeholder', ui(element.dataset.uiPlaceholder as ChromeKey));
+  });
   populateAppLanguageOptions();
   populateBrainProfileOptions(newVaultProfileEl, newVaultProfileEl.value || 'research');
   updateNewVaultProfileFrame();
@@ -387,6 +378,7 @@ function applyInterfaceLanguage(): void {
   refreshRecentViews();
   if (!brainLibraryEl.hidden) void loadBrainLibrary();
   if (!brainManagerEl.hidden) renderBrainManager();
+  if (!profileToolsEl.hidden) renderProfileTools();
   if (!lintPanelEl.hidden) renderLintPanel();
   if (!logPanelEl.hidden) renderLogPanel();
   if (!queryPanelEl.hidden && !queryPanelEl.classList.contains('is-processing')) setQueryRunning(false);
@@ -710,14 +702,14 @@ function renderBrainLibrary(brains: BrainEntry[] = []): void {
   if (brainLibraryLoading) {
     const loading = document.createElement('p');
     loading.className = 'brain-library-loading';
-    loading.textContent = 'Reading your brains…';
+    loading.textContent = ui('library.loading');
     brainLibraryBodyEl.appendChild(loading);
     return;
   }
   if (brains.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'brain-library-empty';
-    empty.textContent = 'No brains here yet. Create one or import an existing one.';
+    empty.textContent = ui('library.empty');
     brainLibraryBodyEl.appendChild(empty);
     return;
   }
@@ -816,12 +808,12 @@ function renderBrainManager(): void {
   if (brainManagerLoading) {
     const loading = document.createElement('p');
     loading.className = 'brain-manager-loading';
-    loading.textContent = 'Reading your local library…';
+    loading.textContent = ui('manager.loading');
     brainManagerListEl.appendChild(loading);
   } else if (brainManagerBrains.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'brain-manager-empty';
-    empty.textContent = 'No local brains yet. Create or import one to configure it here.';
+    empty.textContent = ui('manager.empty');
     brainManagerListEl.appendChild(empty);
   } else {
     const list = document.createElement('div');
@@ -857,7 +849,7 @@ function renderBrainManager(): void {
   brainManagerPathEl.textContent = settings.path;
   brainManagerPathEl.title = settings.path;
   populateBrainProfileOptions(brainManagerProfileEl, settings.profile);
-  brainManagerModulesEl.textContent = `Modules: ${settings.modules.join(' · ')}`;
+  brainManagerModulesEl.textContent = ui('profile.modules', { count: settings.modules.length });
   brainManagerLanguageEl.value = settings.language;
   brainManagerAgentEls.forEach((input) => {
     input.checked = input.value === settings.agent;
@@ -1513,7 +1505,7 @@ function renderReaderBody(markdown: string): HTMLElement {
         if (task) {
           const marker = document.createElement('span');
           marker.className = 'reader-task';
-          marker.textContent = task[1].toLowerCase() === 'x' ? 'Done' : 'To do';
+          marker.textContent = task[1].toLowerCase() === 'x' ? ui('reader.done') : ui('reader.todo');
           item.append(marker, document.createTextNode(' '));
           appendReaderInline(item, task[2]);
         } else {
@@ -1540,7 +1532,7 @@ function renderReaderBody(markdown: string): HTMLElement {
   if (article.childElementCount === 0) {
     const empty = document.createElement('p');
     empty.className = 'reader-empty';
-    empty.textContent = 'This page has no readable body yet.';
+    empty.textContent = ui('reader.empty');
     article.appendChild(empty);
   }
   return article;
@@ -2166,10 +2158,10 @@ function renderProfileToolButton(
   }
   const title = document.createElement('span');
   title.className = 'profile-tool-title';
-  title.textContent = tool.label;
+  title.textContent = toolLabel(tool.id);
   const detail = document.createElement('span');
   detail.className = 'profile-tool-detail';
-  detail.textContent = tool.detail;
+  detail.textContent = ui('tool.detail');
   button.append(title, detail);
   button.addEventListener('click', () => selectProfileTool(tool.id));
   return button;
@@ -2177,8 +2169,9 @@ function renderProfileToolButton(
 
 function renderProfileTools(): void {
   const profile = openProfileDefinition();
-  profileToolsKickerEl.textContent = profile.label;
-  profileToolsCopyEl.textContent = `${profile.detail} These primary tools fit this brain’s profile. Eva uses only the brain you have open and returns cited material you can save for review.`;
+  profileToolsKickerEl.textContent = profileLabel(profile.id);
+  document.getElementById('profile-tools-title')!.textContent = profileLabel(profile.id);
+  profileToolsCopyEl.textContent = ui('profile.detail');
   profileToolsListEl.innerHTML = '';
   for (const tool of profile.tools) {
     profileToolsListEl.appendChild(renderProfileToolButton(tool, 'profile-tool'));
@@ -2186,7 +2179,7 @@ function renderProfileTools(): void {
 
   const otherProfiles = BRAIN_PROFILES.filter((candidate) => candidate.id !== profile.id && candidate.tools.length > 0);
   const otherToolCount = otherProfiles.reduce((total, candidate) => total + candidate.tools.length, 0);
-  profileToolsOtherToggleEl.textContent = `Other tools · ${otherToolCount}`;
+  profileToolsOtherToggleEl.textContent = ui('tool.other', { count: otherToolCount });
   profileToolsOtherToggleEl.hidden = otherToolCount === 0;
   profileToolsOtherToggleEl.setAttribute('aria-expanded', String(otherProfileToolsVisible));
   profileToolsOtherEl.hidden = !otherProfileToolsVisible;
@@ -2194,7 +2187,7 @@ function renderProfileTools(): void {
   if (otherProfileToolsVisible) {
     for (const otherProfile of otherProfiles) {
       for (const tool of otherProfile.tools) {
-        profileToolsOtherListEl.appendChild(renderProfileToolButton(tool, 'profile-tool-other', otherProfile.label));
+        profileToolsOtherListEl.appendChild(renderProfileToolButton(tool, 'profile-tool-other', profileLabel(otherProfile.id)));
       }
     }
   }
@@ -2208,25 +2201,25 @@ function selectProfileTool(tool: ProfileToolId): void {
   profileToolsResultEl.hidden = true;
   profileToolsFocusEl.value = '';
   profileToolsConfigOriginEl.textContent = entry.profile.id === openProfileDefinition().id
-    ? 'Primary tool for this brain'
-    : `From the ${entry.profile.label} profile · uses this open brain`;
-  profileToolsConfigTitleEl.textContent = entry.tool.label;
-  profileToolsConfigCopyEl.textContent = entry.tool.detail;
-  profileToolsFocusEl.placeholder = entry.tool.focusPlaceholder;
+    ? ui('tool.primary')
+    : ui('tool.crossProfile', { profile: profileLabel(entry.profile.id) });
+  profileToolsConfigTitleEl.textContent = toolLabel(entry.tool.id);
+  profileToolsConfigCopyEl.textContent = ui('tool.detail');
+  profileToolsFocusEl.placeholder = ui('tool.focusPlaceholder');
   profileToolsFormatFieldEl.hidden = !('formatOptions' in entry.tool);
   profileToolsFormatEl.innerHTML = '';
   if ('formatOptions' in entry.tool) {
     for (const option of entry.tool.formatOptions) {
       const element = document.createElement('option');
       element.value = option.value;
-      element.textContent = option.label;
+      element.textContent = ui(`format.${option.value}` as ChromeKey);
       profileToolsFormatEl.appendChild(element);
     }
   }
   profileToolsCountFieldEl.hidden = !('countOptions' in entry.tool);
   profileToolsCountEl.innerHTML = '';
   if ('countOptions' in entry.tool) {
-    profileToolsCountLabelEl.textContent = entry.tool.countLabel;
+    profileToolsCountLabelEl.textContent = entry.tool.id === 'flashcards' ? ui('tool.flashcards') : ui('tool.questions');
     for (const count of entry.tool.countOptions) {
       const option = document.createElement('option');
       option.value = String(count);
@@ -2235,7 +2228,7 @@ function selectProfileTool(tool: ProfileToolId): void {
     }
     if (entry.tool.countOptions.length > 1) profileToolsCountEl.selectedIndex = 1;
   }
-  profileToolsRunEl.textContent = `Run ${entry.tool.label}`;
+  profileToolsRunEl.textContent = ui('tool.run', { tool: toolLabel(entry.tool.id) });
   profileToolsConfigEl.hidden = false;
   renderProfileTools();
   window.setTimeout(() => profileToolsFocusEl.focus(), 0);
@@ -2280,7 +2273,7 @@ function renderProfileToolResult(result: ProfileToolResult): void {
   if (result.citations.length === 0) {
     const none = document.createElement('p');
     none.className = 'query-no-citations';
-    none.textContent = 'No supporting brain pages were returned for this result.';
+    none.textContent = ui('tool.none');
     profileToolsCitationsEl.appendChild(none);
   }
   for (const citation of result.citations) {
@@ -2331,7 +2324,7 @@ async function runProfileTool(): Promise<void> {
       title: result.title,
       answer: { answer: result.content, citations: result.citations },
     };
-    profileToolsKickerEl.textContent = entry.tool.label;
+    profileToolsKickerEl.textContent = toolLabel(entry.tool.id);
     renderProfileToolResult(result);
   } catch (error) {
     setProfileToolsError(String(error));
@@ -2350,7 +2343,7 @@ async function saveProfileToolAsAnalysis(): Promise<void> {
   try {
     const review = await invoke<QueryReviewPayload>('query_save', {
       vault: currentVault,
-      question: `${tool?.label ?? 'Brain tool'} · ${profile.label}`,
+      question: `${tool ? toolLabel(tool.id) : ui('tool.result')} · ${profileLabel(profile.id)}`,
       answer: latestProfileTool.answer,
     });
     closeProfileTools();
@@ -2620,7 +2613,7 @@ brainManagerFormEl.addEventListener('submit', (event) => {
 });
 brainManagerProfileEl.addEventListener('change', () => {
   const profile = profileDefinition(brainManagerProfileEl.value);
-  brainManagerModulesEl.textContent = `Modules: ${profile.modules.join(' · ')}`;
+  brainManagerModulesEl.textContent = ui('profile.modules', { count: profile.modules.length });
 });
 document.getElementById('app-settings-close')!.addEventListener('click', closeAppSettings);
 appLanguageEl.addEventListener('change', changeAppLanguage);
