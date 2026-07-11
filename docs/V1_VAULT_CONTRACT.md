@@ -1,5 +1,8 @@
 # Eva V1 brain contract
 
+> This operational overview is retained for existing links. The canonical
+> format specification is now the [Eva Brain Standard v1](EVA_BRAIN_STANDARD.md).
+
 Eva is a local-first LLM Brain: it incrementally turns curated, immutable
 source material into a maintained Markdown knowledge base. This contract is
 the stable boundary between the desktop app, an agent runtime, and an Eva
@@ -25,12 +28,13 @@ agents to it.
 The app's **New brain** flow creates a folder in `~/Documents/Eva/Brains`,
 initializes a local Git repository on `main`, asks for the working language,
 agent runtime, and an optional purpose, then writes that profile into `EVA.md`
-with the initial infrastructure. This local repository does not need a GitHub
+with the initial infrastructure. It also writes `eva.json`, the machine-readable
+Eva Brain Standard version marker. This local repository does not need a GitHub
 account, a remote, or a configured Git identity: Eva supplies command-local
 `Eva <eva@local>` metadata for history it creates. Opening an existing Git-root
 brain writes only missing infrastructure files:
 
-- `EVA.md`, `AGENTS.md`, and `CLAUDE.md`
+- `eva.json`, `EVA.md`, `AGENTS.md`, and `CLAUDE.md`
 - `index.md` and `log.md`
 - an empty `raw/` directory
 

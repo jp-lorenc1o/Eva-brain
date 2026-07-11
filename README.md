@@ -5,9 +5,11 @@ LLM. Instead of repeatedly retrieving from raw documents at question time, Eva
 helps an agent maintain a durable, linked Markdown brain between the sources
 and the user.
 
-The V1 on-disk and operational contract lives in
-[`docs/V1_VAULT_CONTRACT.md`](docs/V1_VAULT_CONTRACT.md). It keeps sources,
-wiki pages, agent instructions, and local change history portable across tools.
+The versioned on-disk and operational contract is the
+[`Eva Brain Standard v1`](docs/EVA_BRAIN_STANDARD.md). Its `eva.json` marker
+lets Eva identify a compatible brain before it applies agent workflows, while
+keeping sources, wiki pages, instructions, and local history portable across
+tools.
 
 - `packages/wiki-lib` — pure TypeScript frontmatter/wiki-link parsing, graph
   building, and deterministic structural linting. Includes a 16-page fixture.
@@ -16,8 +18,9 @@ wiki pages, agent instructions, and local change history portable across tools.
 - `apps/desktop` — Tauri v2 + Vite graph explorer plus Codex CLI and Claude
   Code adapters for worktree-isolated ingest, cited query, and read-only
   Health Check.
-- `schema/` and `templates/vault/` — the generic V1 vault contract and the
-  starter infrastructure seeded into an Eva-managed vault.
+- `schema/` and `templates/vault/` — the Eva Brain Standard v1 marker,
+  operating contract, and starter infrastructure seeded into an Eva-managed
+  brain.
 
 ## Setup
 

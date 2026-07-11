@@ -13,13 +13,23 @@ use tauri::{AppHandle, Emitter, Manager, State};
 const EVA_MD: &str = include_str!("../../../../schema/EVA.md");
 const AGENTS_MD: &str = include_str!("../../../../schema/AGENTS.md");
 const CLAUDE_MD: &str = include_str!("../../../../schema/CLAUDE.md");
+const BRAIN_MANIFEST: &str = include_str!("../../../../schema/eva.json");
 const INDEX_MD: &str = include_str!("../../../../templates/vault/index.md");
 const LOG_MD: &str = include_str!("../../../../templates/vault/log.md");
+const BRAIN_MANIFEST_FILE: &str = "eva.json";
+const BRAIN_FORMAT: &str = "eva-brain";
+const BRAIN_STANDARD_VERSION: u64 = 1;
 
 struct VaultProfile {
     language: String,
     agent: String,
     purpose: String,
+}
+
+#[derive(Deserialize)]
+struct BrainManifest {
+    format: String,
+    version: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -248,6 +258,36 @@ fn require_vault_repo(vault: &Path) -> Result<PathBuf, String> {
     Ok(root)
 }
 
+fn validate_brain_manifest(text: &str) -> Result<(), String> {
+    let manifest: BrainManifest = serde_json::from_str(text)
+        .map_err(|_| "eva.json is not a valid Eva Brain Standard manifest".to_string())?;
+    if manifest.format != BRAIN_FORMAT {
+        return Err("eva.json does not describe an Eva brain".into());
+    }
+    if manifest.version != BRAIN_STANDARD_VERSION {
+        return Err(format!(
+            "this brain uses Eva Brain Standard v{}; this version of Eva supports v{}",
+            manifest.version, BRAIN_STANDARD_VERSION
+        ));
+    }
+    Ok(())
+}
+
+fn verify_brain_standard(root: &Path) -> Result<(), String> {
+    let manifest = fs::read_to_string(root.join(BRAIN_MANIFEST_FILE))
+        .map_err(|_| "this folder does not contain an Eva Brain Standard manifest (eva.json)".to_string())?;
+    validate_brain_manifest(&manifest)
+}
+
+/// Agent operations are permitted only on a Git-root brain that declares a
+/// version Eva understands. `ensure_schema` and import create the declaration
+/// before this boundary can be reached.
+fn require_eva_brain(vault: &Path) -> Result<PathBuf, String> {
+    let root = require_vault_repo(vault)?;
+    verify_brain_standard(&root)?;
+    Ok(root)
+}
+
 fn brain_dir_name(name: &str) -> Result<&str, String> {
     let name = name.trim();
     if name.is_empty() {
@@ -295,9 +335,16 @@ fn brain_entry(path: &Path) -> Result<BrainEntry, String> {
 }
 
 fn is_brain(path: &Path) -> bool {
-    path.is_dir()
-        && path.join("EVA.md").is_file()
-        && require_vault_repo(path).is_ok()
+    if !path.is_dir() || require_vault_repo(path).is_err() {
+        return false;
+    }
+    // Brains made before the machine-readable marker existed stay visible;
+    // opening one adds the missing marker without overwriting its content.
+    if path.join(BRAIN_MANIFEST_FILE).exists() {
+        verify_brain_standard(path).is_ok()
+    } else {
+        path.join("EVA.md").is_file()
+    }
 }
 
 fn list_brains() -> Result<Vec<BrainEntry>, String> {
@@ -390,6 +437,13 @@ fn eva_schema(profile: Option<&VaultProfile>) -> String {
 /// vault and a pre-existing Git-root vault receive the same V1 baseline.
 fn bootstrap_vault(root: &Path, profile: Option<&VaultProfile>) -> Result<bool, String> {
     let mut staged: Vec<&str> = vec!["add"];
+    let manifest_path = root.join(BRAIN_MANIFEST_FILE);
+    if manifest_path.exists() {
+        verify_brain_standard(root)?;
+    } else {
+        fs::write(&manifest_path, BRAIN_MANIFEST).map_err(|e| e.to_string())?;
+        staged.push(BRAIN_MANIFEST_FILE);
+    }
     if !root.join("EVA.md").exists() {
         fs::write(root.join("EVA.md"), eva_schema(profile)).map_err(|e| e.to_string())?;
         staged.push("EVA.md");
@@ -646,6 +700,7 @@ fn verify_agent_write_boundary(worktree: &Path) -> Result<(), String> {
             "--porcelain",
             "--",
             "raw",
+            BRAIN_MANIFEST_FILE,
             "EVA.md",
             "AGENTS.md",
             "CLAUDE.md",
@@ -680,7 +735,7 @@ fn drive_claude_agent(app: &AppHandle, job: &Job, worktree: &Path) -> Result<Str
 2. Read the source document at raw/{source}.
 3. Before creating any page, use the eva MCP tools (search, read_page, neighbors) to find existing pages about the same entities and concepts. Prefer merging new information into existing pages; create a new page only for a distinct entity or concept worth linking to from elsewhere.
 4. Write the knowledge from the source into the wiki: create or update pages with [[wiki-links]], required frontmatter (title, type), source provenance, and keep every page reachable from index.md. Summaries must name their raw source. Never duplicate an existing page.
-5. Do not modify raw/, EVA.md, AGENTS.md, CLAUDE.md, or log.md. Do not use git.
+5. Do not modify raw/, eva.json, EVA.md, AGENTS.md, CLAUDE.md, or log.md. Do not use git.
 
 When you are done, reply with a one-paragraph summary of what you created and updated."#,
         source = job.source_name
@@ -1120,7 +1175,7 @@ fn drive_codex_agent(app: &AppHandle, job: &Job, worktree: &Path) -> Result<Stri
 2. Read raw/{source}.
 3. Search the existing Markdown pages with rg and read the relevant pages before editing. Prefer merging new information into existing pages; create a page only for a distinct entity or concept worth linking from elsewhere.
 4. Create or update the knowledge pages with [[wiki-links]], required frontmatter (title, type), source provenance, and index.md reachability. Summaries must name their raw source. Never duplicate an existing page.
-5. Do not modify raw/, EVA.md, AGENTS.md, CLAUDE.md, or log.md. Do not use git. Do not access the network.
+5. Do not modify raw/, eva.json, EVA.md, AGENTS.md, CLAUDE.md, or log.md. Do not use git. Do not access the network.
 
 When finished, reply with one paragraph describing the pages you created or updated."#,
         source = job.source_name
@@ -1616,7 +1671,7 @@ pub fn brain_import(source: String) -> Result<BrainEntry, String> {
 #[tauri::command]
 pub async fn query_run(vault: String, question: String) -> Result<QueryAnswer, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = require_vault_repo(Path::new(&vault))?;
+        let root = require_eva_brain(Path::new(&vault))?;
         let question = query_text(&question)?;
         let runtime = runtime_for_vault(&root)?;
         ensure_agent_available(runtime)?;
@@ -1629,7 +1684,7 @@ pub async fn query_run(vault: String, question: String) -> Result<QueryAnswer, S
 #[tauri::command]
 pub async fn health_check_run(vault: String) -> Result<HealthReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = require_vault_repo(Path::new(&vault))?;
+        let root = require_eva_brain(Path::new(&vault))?;
         let runtime = runtime_for_vault(&root)?;
         ensure_agent_available(runtime)?;
         drive_health_agent(&root, runtime)
@@ -1645,7 +1700,7 @@ pub fn query_save(
     question: String,
     answer: QueryAnswer,
 ) -> Result<QueryReview, String> {
-    let root = require_vault_repo(Path::new(&vault))?;
+    let root = require_eva_brain(Path::new(&vault))?;
     let question = query_text(&question)?.to_string();
     let review_id = {
         let mut st = state.lock().unwrap();
@@ -1718,7 +1773,7 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, brain_dir_name, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, runtime_for_vault, vault_profile, verify_agent_write_boundary, AgentRuntime, QueryAnswer, QueryCitation};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, runtime_for_vault, validate_brain_manifest, vault_profile, verify_agent_write_boundary, verify_brain_standard, AgentRuntime, QueryAnswer, QueryCitation, BRAIN_MANIFEST};
     use std::{
         fs,
         path::Path,
@@ -1758,6 +1813,33 @@ mod tests {
         assert!(schema.contains("**Working language:** Español"));
         assert!(schema.contains("**Agent runtime:** Claude CLI"));
         assert!(schema.contains("**Purpose:** Investigación de mercado"));
+    }
+
+    #[test]
+    fn brain_standard_manifest_declares_the_supported_version() {
+        assert!(validate_brain_manifest(BRAIN_MANIFEST).is_ok());
+    }
+
+    #[test]
+    fn brain_standard_rejects_unknown_versions() {
+        let error = validate_brain_manifest(r#"{"format":"eva-brain","version":2}"#).unwrap_err();
+        assert!(error.contains("v2"));
+        assert!(error.contains("v1"));
+    }
+
+    #[test]
+    fn bootstrap_adds_the_brain_standard_marker() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-brain-standard-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+
+        assert!(bootstrap_vault(&root, None).unwrap());
+        assert!(verify_brain_standard(&root).is_ok());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1848,7 +1930,7 @@ pub fn ingest_enqueue(
     vault: String,
     sources: Vec<String>,
 ) -> Result<usize, String> {
-    let root = require_vault_repo(Path::new(&vault))?;
+    let root = require_eva_brain(Path::new(&vault))?;
     ensure_agent_available(runtime_for_vault(&root)?)?;
 
     let raw = root.join("raw");

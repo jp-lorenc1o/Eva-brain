@@ -1,4 +1,4 @@
-# Eva vault schema
+# Eva Brain Standard v1 — vault schema
 
 This document is the source of truth for an Eva vault. Humans and agents
 maintain the vault together; agents must read this file before making a
@@ -12,12 +12,13 @@ temporary retrieval index.
   read it but must never edit, move, or delete anything in it.
 - The wiki is the generated Markdown outside `raw/`. Agents create and update
   this layer as new sources and questions add knowledge.
-- This schema defines the operating rules. `EVA.md`, `AGENTS.md`,
+- This schema defines the operating rules. `eva.json`, `EVA.md`, `AGENTS.md`,
   `CLAUDE.md`, and `log.md` are infrastructure, not wiki pages.
 
 ## Standard layout
 
 ```text
+eva.json             machine-readable Eva Brain Standard version marker
 raw/                 original source documents
 entities/            durable pages about people, organizations, places, things
 concepts/            durable pages about ideas, mechanisms, themes
@@ -111,7 +112,9 @@ semantic suggestions should be reported for human review.
 
 ## Safety and versioning
 
-The vault is a local Git repository. Eva performs agent work in an isolated
+`eva.json` identifies this folder as an Eva brain and declares the supported
+standard version. It is managed by Eva and must not be edited by an agent. The
+vault is a local Git repository. Eva performs agent work in an isolated
 worktree and records every ingest in `log.md`. New lint issues and deletions
 require human review before merging. Eva never creates a remote or pushes this
 brain; it stays on the person's device unless they explicitly choose to share
