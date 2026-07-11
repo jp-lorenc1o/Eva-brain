@@ -123,6 +123,8 @@ let simNodes: SimNode[] = [];
 let refreshPositions: (() => void) | null = null;
 let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
+let homeX = forceX<SimNode>(0).strength(0);
+let homeY = forceY<SimNode>(0).strength(0);
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
@@ -171,6 +173,8 @@ function updateExclusions(): void {
   const center = usableCenter();
   centerX.x(center.x);
   centerY.y(center.y);
+  homeX.x((node) => (isHomeNode(node) ? center.x : 0));
+  homeY.y((node) => (isHomeNode(node) ? center.y : 0));
 }
 
 /** Center of the vertical space between top-docked and bottom-docked panels
@@ -254,10 +258,14 @@ function forcePanels() {
 }
 const panelForce = forcePanels();
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const LAYOUT_START_ALPHA = 0.56;
-const LAYOUT_REORGANIZE_ALPHA = 0.64;
-const LAYOUT_ALPHA_DECAY = 0.012;
-const LAYOUT_VELOCITY_DECAY = 0.58;
+const LAYOUT_START_ALPHA = 0.16;
+const LAYOUT_REORGANIZE_ALPHA = 0.2;
+const LAYOUT_ALPHA_DECAY = 0.006;
+const LAYOUT_VELOCITY_DECAY = 0.78;
+
+function isHomeNode(node: Pick<SimNode, 'id' | 'type'>): boolean {
+  return node.id === 'index' || node.type === 'index';
+}
 
 // Labels are the reading surface of a brain graph, so their width belongs in
 // the layout's physical model—not merely in the SVG paint. The cap keeps a
@@ -267,8 +275,16 @@ function nodeCollisionRadius(node: Pick<SimNode, 'title'>): number {
 }
 
 function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): void {
-  for (const [index, node] of nodes.entries()) {
-    const radius = 86 * Math.sqrt(index + 0.5);
+  const home = nodes.find(isHomeNode);
+  if (home) {
+    home.x = center.x;
+    home.y = center.y;
+    home.vx = 0;
+    home.vy = 0;
+  }
+  const satellites = nodes.filter((node) => node !== home);
+  for (const [index, node] of satellites.entries()) {
+    const radius = 190 + 90 * Math.sqrt(index + 0.5);
     node.x = center.x + radius * Math.cos(index * GOLDEN_ANGLE);
     node.y = center.y + radius * Math.sin(index * GOLDEN_ANGLE);
     node.vx = 0;
@@ -288,6 +304,8 @@ function reorganizeGraph(): void {
   svg.querySelectorAll('.node.pinned').forEach((node) => node.classList.remove('pinned'));
   centerX.x(center.x);
   centerY.y(center.y);
+  homeX.x((node) => (isHomeNode(node) ? center.x : 0));
+  homeY.y((node) => (isHomeNode(node) ? center.y : 0));
 
   if (reducedMotion) {
     simulation.stop();
@@ -310,7 +328,8 @@ async function collectMarkdown(root: string, rel = ''): Promise<VaultFile[]> {
       if (rel === '' && entry.name === 'raw') continue;
       files.push(...(await collectMarkdown(root, entryRel)));
     } else if (entry.isFile && entry.name.toLowerCase().endsWith('.md')) {
-      // root-level infrastructure files are not wiki pages
+      // Root-level instructions and logs are not wiki pages. `index.md` is
+      // deliberately included: it is the brain's Home node and graph hub.
       if (rel === '' && INFRA_FILES.has(entry.name.toLowerCase())) continue;
       files.push({ path: entryRel, content: await readTextFile(`${root}/${entryRel}`) });
     }
@@ -698,6 +717,12 @@ function renderGraph(graph: Graph): void {
 
   centerX = forceX<SimNode>(center.x).strength(0.032);
   centerY = forceY<SimNode>(center.y).strength(0.038);
+  homeX = forceX<SimNode>((node) => (isHomeNode(node) ? center.x : 0)).strength((node) =>
+    isHomeNode(node) ? 0.24 : 0,
+  );
+  homeY = forceY<SimNode>((node) => (isHomeNode(node) ? center.y : 0)).strength((node) =>
+    isHomeNode(node) ? 0.24 : 0,
+  );
 
   simulation = forceSimulation(nodes)
     .alphaDecay(LAYOUT_ALPHA_DECAY)
@@ -706,11 +731,15 @@ function renderGraph(graph: Graph): void {
       'link',
       forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
         .id((d) => d.id)
-        .distance(160),
+        .distance((link) =>
+          isHomeNode(link.source as SimNode) || isHomeNode(link.target as SimNode) ? 230 : 160,
+        ),
     )
     .force('charge', forceManyBody().strength(-520))
     .force('x', centerX)
     .force('y', centerY)
+    .force('home-x', homeX)
+    .force('home-y', homeY)
     .force(
       'collide',
       forceCollide<SimNode>()
