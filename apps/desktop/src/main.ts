@@ -173,11 +173,16 @@ interface GraphCamera {
   zoom: number;
 }
 
-type FloatingPanelName = 'map' | 'legend';
+type FloatingPanelName = 'map' | 'legend' | 'reader';
 
 interface FloatingPanelPosition {
   left: number;
   top: number;
+}
+
+interface ReaderPanelSize {
+  width: number;
+  height: number;
 }
 
 interface SavedGraphLayout {
@@ -185,6 +190,7 @@ interface SavedGraphLayout {
   camera: GraphCamera;
   nodes: Record<string, { x: number; y: number }>;
   floating?: Partial<Record<FloatingPanelName, FloatingPanelPosition>>;
+  readerSize?: ReaderPanelSize;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -315,6 +321,7 @@ let graphPan: { pointerId: number; clientX: number; clientY: number; cameraX: nu
 let suppressGraphClickUntil = 0;
 let lockGraphWhenSettled = false;
 let floatingPanelPositions: Partial<Record<FloatingPanelName, FloatingPanelPosition>> = {};
+let readerPanelSize: ReaderPanelSize | null = null;
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
@@ -497,13 +504,14 @@ function graphStorageKey(): string | null {
 const floatingPanels: Record<FloatingPanelName, HTMLElement> = {
   map: graphNavigationEl,
   legend: legendEl,
+  reader: detailEl,
 };
 
 function normalizeFloatingPanelPositions(candidate: unknown): Partial<Record<FloatingPanelName, FloatingPanelPosition>> {
   if (!candidate || typeof candidate !== 'object') return {};
   const source = candidate as Record<string, unknown>;
   const positions: Partial<Record<FloatingPanelName, FloatingPanelPosition>> = {};
-  for (const name of ['map', 'legend'] as const) {
+  for (const name of ['map', 'legend', 'reader'] as const) {
     const point = source[name];
     if (!point || typeof point !== 'object') continue;
     const { left, top } = point as Partial<FloatingPanelPosition>;
@@ -511,6 +519,13 @@ function normalizeFloatingPanelPositions(candidate: unknown): Partial<Record<Flo
     positions[name] = { left, top };
   }
   return positions;
+}
+
+function normalizeReaderPanelSize(candidate: unknown): ReaderPanelSize | null {
+  if (!candidate || typeof candidate !== 'object') return null;
+  const { width, height } = candidate as Partial<ReaderPanelSize>;
+  if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  return { width: Math.max(280, width), height: Math.max(220, height) };
 }
 
 function resetFloatingPanelPositions(): void {
@@ -523,6 +538,12 @@ function resetFloatingPanelPositions(): void {
   }
 }
 
+function resetReaderPanelSize(): void {
+  readerPanelSize = null;
+  detailEl.style.removeProperty('width');
+  detailEl.style.removeProperty('height');
+}
+
 function applyFloatingPanelPositions(): void {
   for (const [name, point] of Object.entries(floatingPanelPositions) as [FloatingPanelName, FloatingPanelPosition][]) {
     const panel = floatingPanels[name];
@@ -531,6 +552,12 @@ function applyFloatingPanelPositions(): void {
     panel.style.right = 'auto';
     panel.style.bottom = 'auto';
   }
+}
+
+function applyReaderPanelSize(): void {
+  if (!readerPanelSize) return;
+  detailEl.style.width = `${readerPanelSize.width}px`;
+  detailEl.style.height = `${readerPanelSize.height}px`;
 }
 
 function normalizeGraphCamera(candidate: unknown): GraphCamera | null {
@@ -550,7 +577,7 @@ function readSavedGraphLayout(): SavedGraphLayout | null {
     if (layout.version !== 1 || !layout.nodes || typeof layout.nodes !== 'object') return null;
     const camera = normalizeGraphCamera(layout.camera);
     if (!camera) return null;
-    return { version: 1, camera, nodes: layout.nodes };
+    return { version: 1, camera, nodes: layout.nodes, floating: layout.floating, readerSize: layout.readerSize };
   } catch {
     return null;
   }
@@ -558,11 +585,14 @@ function readSavedGraphLayout(): SavedGraphLayout | null {
 
 function applySavedGraphLayout(nodes: SimNode[]): boolean {
   resetFloatingPanelPositions();
+  resetReaderPanelSize();
   const saved = readSavedGraphLayout();
   if (!saved) return false;
   graphCamera = saved.camera;
   floatingPanelPositions = normalizeFloatingPanelPositions(saved.floating);
+  readerPanelSize = normalizeReaderPanelSize(saved.readerSize);
   applyFloatingPanelPositions();
+  applyReaderPanelSize();
   let restored = 0;
   for (const node of nodes) {
     const point = saved.nodes[node.id];
@@ -591,7 +621,13 @@ function persistGraphLayout(): void {
   try {
     localStorage.setItem(
       key,
-      JSON.stringify({ version: 1, camera: graphCamera, nodes, floating: floatingPanelPositions } satisfies SavedGraphLayout),
+      JSON.stringify({
+        version: 1,
+        camera: graphCamera,
+        nodes,
+        floating: floatingPanelPositions,
+        readerSize: readerPanelSize ?? undefined,
+      } satisfies SavedGraphLayout),
     );
   } catch {
     // The map remains usable if this webview cannot write preferences.
@@ -2866,6 +2902,20 @@ function makeFloatingPanelDraggable(
 
 makeFloatingPanelDraggable(graphNavigationEl, 'map', (target) => Boolean(target?.closest('.graph-navigation-kicker')));
 makeFloatingPanelDraggable(legendEl, 'legend', () => true);
+makeFloatingPanelDraggable(detailEl, 'reader', (target) => Boolean(target?.closest('.detail-drag-handle')));
+
+let readerResizeFrame: number | null = null;
+const readerResizeObserver = new ResizeObserver(() => {
+  if (detailEl.hidden || readerResizeFrame != null) return;
+  readerResizeFrame = requestAnimationFrame(() => {
+    readerResizeFrame = null;
+    if (detailEl.hidden) return;
+    const { width, height } = detailEl.getBoundingClientRect();
+    readerPanelSize = { width: Math.round(width), height: Math.round(height) };
+    persistGraphLayout();
+  });
+});
+readerResizeObserver.observe(detailEl);
 
 graphZoomOutEl.addEventListener('click', () => {
   zoomGraphAt(window.innerWidth / 2, window.innerHeight / 2, graphCamera.zoom / 1.22);
