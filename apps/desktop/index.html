@@ -74,6 +74,17 @@
       <button id="detail-close" class="panel-close" data-i18n-aria-label="aria.close" aria-label="Close details">&#10005;</button>
       <div id="sidebar"></div>
     </aside>
+    <aside id="graph-navigation" class="glass" hidden aria-label="Map controls">
+      <p class="graph-navigation-kicker" data-ui="map.label">Map</p>
+      <div class="graph-zoom-controls">
+        <button id="graph-zoom-out" class="graph-icon-button" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+        <output id="graph-zoom-level" class="graph-zoom-level" aria-live="polite">100%</output>
+        <button id="graph-zoom-in" class="graph-icon-button" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+      </div>
+      <button id="graph-center-view" class="graph-map-action" type="button" data-ui="map.center">Center map</button>
+      <button id="graph-show-all" class="graph-map-action" type="button" data-ui="map.showAll" hidden>Show all</button>
+      <p id="graph-navigation-hint" class="graph-navigation-hint" data-ui="map.hint">Drag the empty map to pan. Scroll to zoom.</p>
+    </aside>
     <aside id="review" class="glass operation-modal" hidden aria-label="Change review" role="dialog" aria-modal="true">
       <div class="panel-head">
         <h2 id="review-title" data-i18n="review.title">Review changes</h2>

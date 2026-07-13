@@ -167,11 +167,16 @@ interface SimNode extends SimulationNodeDatum {
   type: string | null;
 }
 
-interface Rect {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
+interface GraphCamera {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+interface SavedGraphLayout {
+  version: 1;
+  camera: GraphCamera;
+  nodes: Record<string, { x: number; y: number }>;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -184,6 +189,13 @@ const commandEl = document.getElementById('command') as HTMLElement;
 const operationScrimEl = document.getElementById('operation-scrim') as HTMLElement;
 const detailEl = document.getElementById('detail') as HTMLElement;
 const legendEl = document.getElementById('legend') as HTMLElement;
+const graphNavigationEl = document.getElementById('graph-navigation') as HTMLElement;
+const graphZoomOutEl = document.getElementById('graph-zoom-out') as HTMLButtonElement;
+const graphZoomInEl = document.getElementById('graph-zoom-in') as HTMLButtonElement;
+const graphZoomLevelEl = document.getElementById('graph-zoom-level') as HTMLOutputElement;
+const graphCenterViewEl = document.getElementById('graph-center-view') as HTMLButtonElement;
+const graphShowAllEl = document.getElementById('graph-show-all') as HTMLButtonElement;
+const graphNavigationHintEl = document.getElementById('graph-navigation-hint') as HTMLElement;
 const lintPanelEl = document.getElementById('lint-panel') as HTMLElement;
 const lintSubEl = document.getElementById('lint-sub') as HTMLElement;
 const lintBodyEl = document.getElementById('lint-body') as HTMLElement;
@@ -274,8 +286,9 @@ const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElemen
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const AMBIENT_ALPHA = 0.0015;
-const PANEL_MARGIN = 28;
+const GRAPH_LAYOUT_STORAGE_PREFIX = 'eva:graph-layout:v1:';
+const GRAPH_MIN_ZOOM = 0.3;
+const GRAPH_MAX_ZOOM = 2.5;
 const INFRA_FILES = new Set(['log.md', 'eva.md', 'agents.md', 'claude.md']);
 
 let vault: Vault | null = null;
@@ -289,6 +302,10 @@ let centerX = forceX<SimNode>(0);
 let centerY = forceY<SimNode>(0);
 let homeCenterX = forceX<SimNode>(0).strength(0);
 let homeCenterY = forceY<SimNode>(0).strength(0);
+let graphCamera: GraphCamera = { x: 0, y: 0, zoom: 1 };
+let graphPan: { pointerId: number; clientX: number; clientY: number; cameraX: number; cameraY: number; moved: boolean } | null = null;
+let suppressGraphClickUntil = 0;
+let lockGraphWhenSettled = false;
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
@@ -382,6 +399,7 @@ function applyInterfaceLanguage(): void {
   if (!lintPanelEl.hidden) renderLintPanel();
   if (!logPanelEl.hidden) renderLogPanel();
   if (!queryPanelEl.hidden && !queryPanelEl.classList.contains('is-processing')) setQueryRunning(false);
+  updateGraphNavigation();
 }
 
 function setAppSettingsStatus(message: string | null): void {
@@ -389,47 +407,11 @@ function setAppSettingsStatus(message: string | null): void {
   appSettingsStatusEl.textContent = message ?? '';
 }
 
-/* Panel exclusion zones ------------------------------------------------------
-   Every visible vellum sheet claims its bounding rect (plus a margin) as
-   space the graph must not occupy. Rects are recomputed whenever a panel
-   opens, closes, or changes content, and on window resize. */
-let exclusionRects: Rect[] = [];
-
+/* A brain map is a canvas, not a shelf behind the current panel. Operations
+   are overlays and never move it. Only the Home target needs to follow a
+   resized window while a reorganization is running. */
 function updateExclusions(): void {
-  exclusionRects = [...document.querySelectorAll<HTMLElement>('.glass')]
-    .filter((el) => !el.hidden && !el.classList.contains('operation-modal'))
-    .map((el) => {
-      const r = el.getBoundingClientRect();
-      return {
-        left: r.left - PANEL_MARGIN,
-        top: r.top - PANEL_MARGIN,
-        right: r.right + PANEL_MARGIN,
-        bottom: r.bottom + PANEL_MARGIN,
-      };
-    });
-  // A panel may have opened over an already-pinned node; move the pin clear
-  // so no node is ever left unreachable behind a sheet.
-  let movedPin = false;
-  for (const node of simNodes) {
-    if (node.fx == null || node.fy == null) continue;
-    if (isHomeNode(node)) continue;
-    const nudged = nudgeOutside(node.fx, node.fy);
-    const safe = keepNodeInViewport(nudged.x, nudged.y, nodeCollisionRadius(node));
-    if (safe.x !== node.fx || safe.y !== node.fy) {
-      node.fx = safe.x;
-      node.fy = safe.y;
-      movedPin = true;
-    }
-  }
-  if (movedPin) {
-    simulation?.tick(1);
-    refreshPositions?.();
-  }
-  // Keep the graph's reference point at the literal page center. Panels are
-  // still handled by the dedicated exclusion force.
   const center = pageCenter();
-  centerX.x(center.x);
-  centerY.y(center.y);
   homeCenterX.x((node) => (isHomeNode(node) ? center.x : 0));
   homeCenterY.y((node) => (isHomeNode(node) ? center.y : 0));
 }
@@ -438,73 +420,11 @@ function pageCenter(): { x: number; y: number } {
   return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 }
 
-const insideRect = (x: number, y: number, r: Rect): boolean =>
-  x > r.left && x < r.right && y > r.top && y < r.bottom;
-
-/** Nearest point just outside any exclusion rect, preferring exits that stay
-    on screen. */
-function nudgeOutside(x: number, y: number): { x: number; y: number } {
-  let nx = x;
-  let ny = y;
-  for (const r of exclusionRects) {
-    if (!insideRect(nx, ny, r)) continue;
-    const candidates = [
-      { d: nx - r.left, x: r.left - 4, y: ny },
-      { d: r.right - nx, x: r.right + 4, y: ny },
-      { d: ny - r.top, x: nx, y: r.top - 4 },
-      { d: r.bottom - ny, x: nx, y: r.bottom + 4 },
-    ].sort((a, b) => a.d - b.d);
-    const pad = 12;
-    const fits = (c: { x: number; y: number }) =>
-      c.x > pad && c.x < window.innerWidth - pad && c.y > pad && c.y < window.innerHeight - pad;
-    const pick = candidates.find(fits) ?? candidates[0];
-    nx = pick.x;
-    ny = pick.y;
-  }
-  return { x: nx, y: ny };
-}
-
-/* Custom d3 force: free nodes inside an exclusion rect are moved toward its
-   nearest edge with a position correction (like forceCollide), so escape
-   doesn't depend on alpha and can't reach equilibrium against link/centering
-   forces — even during near-still ambient drift. Pinned nodes are user intent
-   and are handled at drag release and in updateExclusions instead. */
-function forcePanels() {
-  let nodes: SimNode[] = [];
-  const force = () => {
-    for (const node of nodes) {
-      if (node.fx != null) continue;
-      const x = node.x ?? 0;
-      const y = node.y ?? 0;
-      for (const r of exclusionRects) {
-        if (!insideRect(x, y, r)) continue;
-        const dl = x - r.left;
-        const dr = r.right - x;
-        const dt = y - r.top;
-        const db = r.bottom - y;
-        const min = Math.min(dl, dr, dt, db);
-        const step = Math.max(1.5, 0.25 * (min + 10));
-        if (min === dl) node.x = x - step;
-        else if (min === dr) node.x = x + step;
-        else if (min === dt) node.y = y - step;
-        else node.y = y + step;
-        // kill momentum carrying the node deeper into the panel
-        node.vx = (node.vx ?? 0) * 0.6;
-        node.vy = (node.vy ?? 0) * 0.6;
-      }
-    }
-  };
-  force.initialize = (n: SimNode[]) => {
-    nodes = n;
-  };
-  return force;
-}
-const panelForce = forcePanels();
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const LAYOUT_START_ALPHA = 0.16;
 const LAYOUT_REORGANIZE_ALPHA = 0.2;
-const LAYOUT_ALPHA_DECAY = 0.006;
-const LAYOUT_VELOCITY_DECAY = 0.78;
+const LAYOUT_ALPHA_DECAY = 0.018;
+const LAYOUT_VELOCITY_DECAY = 0.8;
 
 function isHomeNode(node: Pick<SimNode, 'id' | 'type'>): boolean {
   return node.id === 'index' || node.type === 'index';
@@ -517,38 +437,19 @@ function nodeCollisionRadius(node: Pick<SimNode, 'title'>): number {
   return Math.min(150, Math.max(42, 20 + node.title.length * 3.1));
 }
 
-function keepNodeInViewport(x: number, y: number, radius: number): { x: number; y: number } {
-  const padding = 18;
-  const clamp = (value: number, min: number, max: number) =>
-    min > max ? (min + max) / 2 : Math.min(max, Math.max(min, value));
-  return {
-    x: clamp(x, padding + radius, window.innerWidth - padding - radius),
-    y: clamp(y, padding + radius, window.innerHeight - padding - radius),
-  };
+function typeClusterTargets(nodes: SimNode[], center: { x: number; y: number }): Map<string, { x: number; y: number }> {
+  const types = [...new Set(nodes.filter((node) => !isHomeNode(node)).map((node) => node.type ?? 'untyped'))].sort();
+  const targets = new Map<string, { x: number; y: number }>();
+  const orbit = Math.max(290, 66 * Math.sqrt(Math.max(1, nodes.length - 1)));
+  for (const [index, type] of types.entries()) {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(types.length, 1);
+    targets.set(type, {
+      x: center.x + orbit * Math.cos(angle),
+      y: center.y + orbit * Math.sin(angle),
+    });
+  }
+  return targets;
 }
-
-function forceViewportBounds() {
-  let nodes: SimNode[] = [];
-  const force = () => {
-    for (const node of nodes) {
-      if (isHomeNode(node)) continue;
-      // A pin is explicit human placement. Only constrain the automatic
-      // layout, so every node remains freely draggable.
-      if (node.fx != null || node.fy != null) continue;
-      const safe = keepNodeInViewport(node.x ?? 0, node.y ?? 0, nodeCollisionRadius(node));
-      if (safe.x !== node.x) node.vx = (node.vx ?? 0) * 0.35;
-      if (safe.y !== node.y) node.vy = (node.vy ?? 0) * 0.35;
-      node.x = safe.x;
-      node.y = safe.y;
-    }
-  };
-  force.initialize = (next: SimNode[]) => {
-    nodes = next;
-  };
-  return force;
-}
-
-const viewportBoundsForce = forceViewportBounds();
 
 function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): void {
   const home = nodes.find(isHomeNode);
@@ -558,14 +459,156 @@ function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): voi
     home.vx = 0;
     home.vy = 0;
   }
-  const satellites = nodes.filter((node) => node !== home);
-  for (const [index, node] of satellites.entries()) {
-    const radius = 190 + 90 * Math.sqrt(index + 0.5);
-    node.x = center.x + radius * Math.cos(index * GOLDEN_ANGLE);
-    node.y = center.y + radius * Math.sin(index * GOLDEN_ANGLE);
+  const targets = typeClusterTargets(nodes, center);
+  const byType = new Map<string, SimNode[]>();
+  for (const node of nodes) {
+    if (node === home) continue;
+    const type = node.type ?? 'untyped';
+    const group = byType.get(type) ?? [];
+    group.push(node);
+    byType.set(type, group);
+  }
+  for (const [type, group] of byType) {
+    const target = targets.get(type) ?? center;
+    for (const [index, node] of group.entries()) {
+      const radius = 52 + 64 * Math.sqrt(index + 0.5);
+      const angle = index * GOLDEN_ANGLE;
+      node.x = target.x + radius * Math.cos(angle);
+      node.y = target.y + radius * Math.sin(angle);
+      node.vx = 0;
+      node.vy = 0;
+    }
+  }
+}
+
+function graphStorageKey(): string | null {
+  return currentVault ? `${GRAPH_LAYOUT_STORAGE_PREFIX}${currentVault}` : null;
+}
+
+function normalizeGraphCamera(candidate: unknown): GraphCamera | null {
+  if (!candidate || typeof candidate !== 'object') return null;
+  const { x, y, zoom } = candidate as Partial<GraphCamera>;
+  if (![x, y, zoom].every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
+  return { x: x!, y: y!, zoom: Math.min(GRAPH_MAX_ZOOM, Math.max(GRAPH_MIN_ZOOM, zoom!)) };
+}
+
+function readSavedGraphLayout(): SavedGraphLayout | null {
+  const key = graphStorageKey();
+  if (!key) return null;
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+    const layout = parsed as Partial<SavedGraphLayout>;
+    if (layout.version !== 1 || !layout.nodes || typeof layout.nodes !== 'object') return null;
+    const camera = normalizeGraphCamera(layout.camera);
+    if (!camera) return null;
+    return { version: 1, camera, nodes: layout.nodes };
+  } catch {
+    return null;
+  }
+}
+
+function applySavedGraphLayout(nodes: SimNode[]): boolean {
+  const saved = readSavedGraphLayout();
+  if (!saved) return false;
+  graphCamera = saved.camera;
+  let restored = 0;
+  for (const node of nodes) {
+    const point = saved.nodes[node.id];
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+    node.x = point.x;
+    node.y = point.y;
+    node.fx = point.x;
+    node.fy = point.y;
+    node.vx = 0;
+    node.vy = 0;
+    restored += 1;
+  }
+  return restored === nodes.length;
+}
+
+function persistGraphLayout(): void {
+  const key = graphStorageKey();
+  if (!key || simNodes.length === 0) return;
+  const nodes: SavedGraphLayout['nodes'] = {};
+  for (const node of simNodes) {
+    const x = node.x ?? node.fx;
+    const y = node.y ?? node.fy;
+    if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+    nodes[node.id] = { x, y };
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify({ version: 1, camera: graphCamera, nodes } satisfies SavedGraphLayout));
+  } catch {
+    // The map remains usable if this webview cannot write preferences.
+  }
+}
+
+function lockGraphLayout(): void {
+  for (const node of simNodes) {
+    const x = node.x ?? node.fx;
+    const y = node.y ?? node.fy;
+    if (x == null || y == null) continue;
+    node.x = x;
+    node.y = y;
+    node.fx = x;
+    node.fy = y;
     node.vx = 0;
     node.vy = 0;
   }
+  refreshPositions?.();
+  persistGraphLayout();
+}
+
+function viewportWorldSize(): { width: number; height: number } {
+  return { width: window.innerWidth / graphCamera.zoom, height: window.innerHeight / graphCamera.zoom };
+}
+
+function applyGraphCamera(): void {
+  const { width, height } = viewportWorldSize();
+  svg.setAttribute('viewBox', `${graphCamera.x} ${graphCamera.y} ${width} ${height}`);
+  graphZoomLevelEl.value = `${Math.round(graphCamera.zoom * 100)}%`;
+  graphZoomLevelEl.textContent = graphZoomLevelEl.value;
+}
+
+function centerGraphCamera(zoom = 1): void {
+  graphCamera.zoom = Math.min(GRAPH_MAX_ZOOM, Math.max(GRAPH_MIN_ZOOM, zoom));
+  const center = pageCenter();
+  const { width, height } = viewportWorldSize();
+  graphCamera.x = center.x - width / 2;
+  graphCamera.y = center.y - height / 2;
+  applyGraphCamera();
+}
+
+function graphPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
+  const rect = svg.getBoundingClientRect();
+  const { width, height } = viewportWorldSize();
+  return {
+    x: graphCamera.x + ((clientX - rect.left) / rect.width) * width,
+    y: graphCamera.y + ((clientY - rect.top) / rect.height) * height,
+  };
+}
+
+function zoomGraphAt(clientX: number, clientY: number, nextZoom: number): void {
+  const anchor = graphPointFromClient(clientX, clientY);
+  graphCamera.zoom = Math.min(GRAPH_MAX_ZOOM, Math.max(GRAPH_MIN_ZOOM, nextZoom));
+  const rect = svg.getBoundingClientRect();
+  const { width, height } = viewportWorldSize();
+  graphCamera.x = anchor.x - ((clientX - rect.left) / rect.width) * width;
+  graphCamera.y = anchor.y - ((clientY - rect.top) / rect.height) * height;
+  applyGraphCamera();
+}
+
+function updateGraphNavigation(): void {
+  const selectedId = svg.querySelector<SVGGElement>('.node.selected')?.dataset.id;
+  const selected = selectedId ? simNodes.find((node) => node.id === selectedId) : null;
+  graphNavigationEl.setAttribute('aria-label', ui('map.label'));
+  graphZoomOutEl.setAttribute('aria-label', ui('map.zoomOut'));
+  graphZoomOutEl.title = ui('map.zoomOut');
+  graphZoomInEl.setAttribute('aria-label', ui('map.zoomIn'));
+  graphZoomInEl.title = ui('map.zoomIn');
+  graphShowAllEl.hidden = !selected;
+  graphNavigationHintEl.textContent = selected ? ui('map.focus', { title: selected.title }) : ui('map.hint');
 }
 
 function reorganizeGraph(): void {
@@ -578,19 +621,21 @@ function reorganizeGraph(): void {
     node.vy = 0;
   }
   svg.querySelectorAll('.node.pinned').forEach((node) => node.classList.remove('pinned'));
-  centerX.x(center.x);
-  centerY.y(center.y);
+  seedGraphNodes(simNodes, center);
   homeCenterX.x((node) => (isHomeNode(node) ? center.x : 0));
   homeCenterY.y((node) => (isHomeNode(node) ? center.y : 0));
+  centerGraphCamera();
 
   if (reducedMotion) {
     simulation.stop();
     simulation.alpha(1).tick(420);
     refreshPositions?.();
+    lockGraphLayout();
   } else {
-    simulation.alpha(LAYOUT_REORGANIZE_ALPHA).alphaTarget(AMBIENT_ALPHA).restart();
+    lockGraphWhenSettled = true;
+    simulation.alpha(LAYOUT_REORGANIZE_ALPHA).alphaTarget(0).restart();
   }
-  setIngestStatus('Graph reorganized', false);
+  setIngestStatus(ui('map.reorganized'), false);
 }
 
 async function collectMarkdown(root: string, rel = ''): Promise<VaultFile[]> {
@@ -1104,6 +1149,7 @@ async function openVault(root: string): Promise<void> {
   vaultPathEl.title = root;
   emptyEl.hidden = true;
   commandEl.hidden = false;
+  graphNavigationEl.hidden = false;
   closeSidePanels();
   renderLegend();
   renderGraph(buildGraph(vault));
@@ -1129,11 +1175,15 @@ function renderLegend(): void {
 
 function renderGraph(graph: Graph): void {
   simulation?.stop();
-  // Seed Home at the page center. Its catalog links then make the rest of the
-  // graph settle outward, while the panel force preserves access to nodes.
+  lockGraphWhenSettled = false;
+  // Seed Home at the page center, then spread page types into their own
+  // regions. A large brain gets a larger map instead of a tighter knot.
   const center = pageCenter();
   const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
   seedGraphNodes(nodes, center);
+  const restoredWholeLayout = applySavedGraphLayout(nodes);
+  if (restoredWholeLayout) applyGraphCamera();
+  else centerGraphCamera();
   simNodes = nodes;
   const links: SimulationLinkDatum<SimNode>[] = graph.edges.map((e) => ({
     source: e.source,
@@ -1151,16 +1201,22 @@ function renderGraph(graph: Graph): void {
     '</filter>';
   svg.appendChild(defs);
 
+  const stage = document.createElementNS(SVG_NS, 'g');
+  stage.setAttribute('class', 'graph-stage');
+  svg.appendChild(stage);
+
   const lineEls = links.map((link) => {
     const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('class', 'edge');
-    line.dataset.source = (link.source as string | SimNode) instanceof Object
+    const sourceId = (link.source as string | SimNode) instanceof Object
       ? (link.source as SimNode).id
       : (link.source as string);
-    line.dataset.target = (link.target as string | SimNode) instanceof Object
+    const targetId = (link.target as string | SimNode) instanceof Object
       ? (link.target as SimNode).id
       : (link.target as string);
-    svg.appendChild(line);
+    line.setAttribute('class', sourceId === 'index' || targetId === 'index' ? 'edge catalog-edge' : 'edge');
+    line.dataset.source = sourceId;
+    line.dataset.target = targetId;
+    stage.appendChild(line);
     return line;
   });
 
@@ -1184,7 +1240,7 @@ function renderGraph(graph: Graph): void {
     label.textContent = node.title;
     g.append(ring, pulse, circle, label);
     attachDrag(g, node);
-    svg.appendChild(g);
+    stage.appendChild(g);
     return g;
   });
   applyAgentActive();
@@ -1204,8 +1260,15 @@ function renderGraph(graph: Graph): void {
   };
   refreshPositions = updatePositions;
 
-  centerX = forceX<SimNode>(center.x).strength(0.032);
-  centerY = forceY<SimNode>(center.y).strength(0.038);
+  const clusterTargets = typeClusterTargets(nodes, center);
+  const homeOrbit = Math.max(380, 78 * Math.sqrt(Math.max(1, nodes.length - 1)));
+  const clusterStrength = nodes.length > 70 ? 0.009 : 0.016;
+  centerX = forceX<SimNode>((node) =>
+    isHomeNode(node) ? center.x : (clusterTargets.get(node.type ?? 'untyped')?.x ?? center.x),
+  ).strength((node) => (isHomeNode(node) ? 0.08 : clusterStrength));
+  centerY = forceY<SimNode>((node) =>
+    isHomeNode(node) ? center.y : (clusterTargets.get(node.type ?? 'untyped')?.y ?? center.y),
+  ).strength((node) => (isHomeNode(node) ? 0.08 : clusterStrength));
   // Home remains draggable. It is only guided to the center after a
   // reorganization, where this gentle target force creates the visible return.
   homeCenterX = forceX<SimNode>((node) => (isHomeNode(node) ? center.x : 0)).strength((node) =>
@@ -1223,10 +1286,13 @@ function renderGraph(graph: Graph): void {
       forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
         .id((d) => d.id)
         .distance((link) =>
-          isHomeNode(link.source as SimNode) || isHomeNode(link.target as SimNode) ? 230 : 160,
+          isHomeNode(link.source as SimNode) || isHomeNode(link.target as SimNode) ? homeOrbit : 180,
+        )
+        .strength((link) =>
+          isHomeNode(link.source as SimNode) || isHomeNode(link.target as SimNode) ? 0.035 : 0.3,
         ),
     )
-    .force('charge', forceManyBody().strength(-520))
+    .force('charge', forceManyBody().strength(-460 * Math.max(1, Math.sqrt(nodes.length / 32))))
     .force('x', centerX)
     .force('y', centerY)
     .force('home-center-x', homeCenterX)
@@ -1238,28 +1304,34 @@ function renderGraph(graph: Graph): void {
         .strength(0.95)
         .iterations(2),
     )
-    .force('panels', panelForce)
-    .force('bounds', viewportBoundsForce)
-    .on('tick', updatePositions);
+    .on('tick', updatePositions)
+    .on('end', () => {
+      if (!lockGraphWhenSettled) return;
+      lockGraphWhenSettled = false;
+      lockGraphLayout();
+    });
 
-  if (reducedMotion) {
-    // Settle instantly: no ambient drift for reduced-motion users. The
-    // simulation still exists so dragging can wake it, and its default
-    // alphaMin lets it come to rest again afterwards.
+  if (restoredWholeLayout) {
+    simulation.stop();
+    updatePositions();
+  } else if (reducedMotion) {
+    // Settle instantly for reduced-motion users, then freeze the resulting
+    // atlas. There is never ambient drift.
     simulation.stop();
     simulation.tick(300);
     updatePositions();
+    lockGraphLayout();
   } else {
-    // Begin with enough energy to settle a new graph, but with a long, soft
-    // deceleration so opening and reorganization read as a reflow—not a jump.
-    simulation.alpha(LAYOUT_START_ALPHA).alphaTarget(AMBIENT_ALPHA).alphaMin(0);
+    // One visible reflow when a map is first built; after that it is fixed
+    // until the person explicitly reorganizes it.
+    lockGraphWhenSettled = true;
+    simulation.alpha(LAYOUT_START_ALPHA).alphaTarget(0).restart();
   }
 }
 
 /* Dragging: pointer events straight on the node group (the graph is hand-run
-   SVG, not d3-selection). While dragging, fx/fy make the pointer authoritative
-   over the simulation — including over the panel force; on release the drop
-   point is nudged clear of any panel, then stays pinned. */
+   SVG, not d3-selection). A dropped node becomes a fixed local placement;
+   the rest of a dense map never needs to churn in response. */
 function attachDrag(g: SVGGElement, node: SimNode): void {
   let activePointer: number | null = null;
   let moved = false;
@@ -1274,14 +1346,15 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
     } catch {
       /* synthetic pointers are never captured */
     }
-    // Respect the drag's intent, but never let a node rest somewhere
-    // unreachable: if it was dropped inside a panel, move it (pin included)
-    // to the nearest point just outside.
-    const nudged = nudgeOutside(node.fx ?? node.x ?? 0, node.fy ?? node.y ?? 0);
-    node.fx = nudged.x;
-    node.fy = nudged.y;
+    // A hand-placed node is exact intent. The map does not reheat the whole
+    // simulation around a single move; this is what keeps dense brains calm.
+    node.x = node.fx ?? node.x;
+    node.y = node.fy ?? node.y;
+    node.vx = 0;
+    node.vy = 0;
     g.classList.add('pinned');
-    simulation?.alphaTarget(reducedMotion ? 0 : AMBIENT_ALPHA);
+    refreshPositions?.();
+    persistGraphLayout();
   };
 
   g.addEventListener('pointerdown', (event) => {
@@ -1301,17 +1374,18 @@ function attachDrag(g: SVGGElement, node: SimNode): void {
     }
     node.fx = node.x;
     node.fy = node.y;
-    simulation?.alphaTarget(0.12).restart();
   });
 
   g.addEventListener('pointermove', (event) => {
     if (activePointer !== event.pointerId) return;
     event.preventDefault();
     if (Math.hypot(event.clientX - startX, event.clientY - startY) > 3) moved = true;
-    // The SVG is viewport-fixed with no viewBox, so client coords are
-    // simulation coords.
-    node.fx = event.clientX;
-    node.fy = event.clientY;
+    const point = graphPointFromClient(event.clientX, event.clientY);
+    node.fx = point.x;
+    node.fy = point.y;
+    node.x = point.x;
+    node.y = point.y;
+    refreshPositions?.();
   });
 
   g.addEventListener('pointerup', endDrag);
@@ -1567,6 +1641,7 @@ function select(id: string): void {
     el.classList.toggle('faded', !neighborhood.has(nodeId));
   });
   svg.classList.add('focused');
+  updateGraphNavigation();
 
   const pageIssues = issues.filter((issue) => issue.page === id);
   sidebar.innerHTML = '';
@@ -1615,6 +1690,7 @@ function deselect(): void {
   svg.querySelectorAll('.node.faded').forEach((el) => el.classList.remove('faded'));
   svg.querySelectorAll('line.edge').forEach((el) => el.classList.remove('lit', 'faded'));
   updateExclusions();
+  updateGraphNavigation();
 }
 
 function goHome(): void {
@@ -1653,6 +1729,7 @@ function goHome(): void {
   vaultPathEl.textContent = t('nav.noBrain');
   vaultPathEl.title = '';
   legendEl.hidden = true;
+  graphNavigationEl.hidden = true;
   commandEl.hidden = true;
   emptyEl.hidden = false;
   setIngestStatus(null, false);
@@ -2674,7 +2751,76 @@ operationScrimEl.addEventListener('click', () => {
   else closeSidePanels();
 });
 
-svg.addEventListener('click', deselect);
+graphZoomOutEl.addEventListener('click', () => {
+  zoomGraphAt(window.innerWidth / 2, window.innerHeight / 2, graphCamera.zoom / 1.22);
+  persistGraphLayout();
+});
+graphZoomInEl.addEventListener('click', () => {
+  zoomGraphAt(window.innerWidth / 2, window.innerHeight / 2, graphCamera.zoom * 1.22);
+  persistGraphLayout();
+});
+graphCenterViewEl.addEventListener('click', () => {
+  centerGraphCamera();
+  persistGraphLayout();
+});
+graphShowAllEl.addEventListener('click', deselect);
+
+svg.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('.node')) return;
+  event.preventDefault();
+  graphPan = {
+    pointerId: event.pointerId,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    cameraX: graphCamera.x,
+    cameraY: graphCamera.y,
+    moved: false,
+  };
+  svg.classList.add('is-panning');
+  try {
+    svg.setPointerCapture(event.pointerId);
+  } catch {
+    /* synthetic pointers are never captured */
+  }
+});
+
+svg.addEventListener('pointermove', (event) => {
+  if (!graphPan || graphPan.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  if (Math.hypot(event.clientX - graphPan.clientX, event.clientY - graphPan.clientY) > 3) graphPan.moved = true;
+  graphCamera.x = graphPan.cameraX - (event.clientX - graphPan.clientX) / graphCamera.zoom;
+  graphCamera.y = graphPan.cameraY - (event.clientY - graphPan.clientY) / graphCamera.zoom;
+  applyGraphCamera();
+});
+
+const endGraphPan = (event: PointerEvent) => {
+  if (!graphPan || graphPan.pointerId !== event.pointerId) return;
+  const moved = graphPan.moved;
+  graphPan = null;
+  if (moved) suppressGraphClickUntil = Date.now() + 180;
+  svg.classList.remove('is-panning');
+  try {
+    svg.releasePointerCapture(event.pointerId);
+  } catch {
+    /* synthetic pointers are never captured */
+  }
+  persistGraphLayout();
+};
+svg.addEventListener('pointerup', endGraphPan);
+svg.addEventListener('pointercancel', endGraphPan);
+svg.addEventListener('wheel', (event) => {
+  if (!vault) return;
+  event.preventDefault();
+  const multiplier = Math.exp(-event.deltaY * 0.0015);
+  zoomGraphAt(event.clientX, event.clientY, graphCamera.zoom * multiplier);
+  persistGraphLayout();
+}, { passive: false });
+svg.addEventListener('click', () => {
+  if (Date.now() < suppressGraphClickUntil) return;
+  deselect();
+});
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   // The review panel requires an explicit accept/reject — Escape skips it.
@@ -2707,14 +2853,10 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('resize', () => {
-  updateExclusions(); // also re-aims the centering forces at the usable center
-  if (!simulation) return;
-  if (reducedMotion) {
-    simulation.tick(120);
-    refreshPositions?.();
-  } else {
-    simulation.alpha(Math.max(simulation.alpha(), 0.25));
-  }
+  updateExclusions();
+  if (!vault) return;
+  applyGraphCamera();
+  refreshPositions?.();
 });
 
 applyInterfaceLanguage();
