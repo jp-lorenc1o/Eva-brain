@@ -248,11 +248,10 @@
               </label>
             </div>
             <div class="agent-preferences">
-              <label class="agent-preference-field" for="brain-manager-model">
-                <span class="form-label" data-i18n="ai.model">Model</span>
-                <input id="brain-manager-model" class="text-input compact" type="text" list="brain-manager-model-options" maxlength="120" autocomplete="off" spellcheck="false" data-i18n-placeholder="ai.modelPlaceholder" placeholder="Runtime default" />
-                <datalist id="brain-manager-model-options"></datalist>
-              </label>
+              <fieldset class="agent-model-fieldset">
+                <legend class="form-label" data-i18n="ai.model">Model</legend>
+                <div id="brain-manager-models" class="model-choices"></div>
+              </fieldset>
               <label class="agent-preference-field" for="brain-manager-effort">
                 <span class="form-label" data-i18n="ai.effort">Reasoning effort</span>
                 <select id="brain-manager-effort" class="text-input compact"></select>
@@ -324,11 +323,10 @@
             </label>
           </div>
           <div class="agent-preferences">
-            <label class="agent-preference-field" for="new-vault-model">
-              <span class="form-label" data-i18n="ai.model">Model</span>
-              <input id="new-vault-model" class="text-input compact" type="text" list="new-vault-model-options" maxlength="120" autocomplete="off" spellcheck="false" data-i18n-placeholder="ai.modelPlaceholder" placeholder="Runtime default" />
-              <datalist id="new-vault-model-options"></datalist>
-            </label>
+            <fieldset class="agent-model-fieldset">
+              <legend class="form-label" data-i18n="ai.model">Model</legend>
+              <div id="new-vault-models" class="model-choices"></div>
+            </fieldset>
             <label class="agent-preference-field" for="new-vault-effort">
               <span class="form-label" data-i18n="ai.effort">Reasoning effort</span>
               <select id="new-vault-effort" class="text-input compact"></select>

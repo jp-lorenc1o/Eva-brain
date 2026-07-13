@@ -692,13 +692,21 @@ fn agent_model(value: &str) -> Result<String, String> {
 
 fn agent_effort(runtime: AgentRuntime, value: &str) -> Result<String, String> {
     let value = value.trim();
-    if value.is_empty() || matches!(value, "low" | "medium" | "high" | "xhigh") {
+    if value.is_empty() {
         return Ok(value.to_string());
     }
-    if runtime == AgentRuntime::Claude && value == "max" {
-        return Ok(value.to_string());
+    let supported = match runtime {
+        AgentRuntime::Codex => matches!(
+            value,
+            "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+        ),
+        AgentRuntime::Claude => matches!(value, "low" | "medium" | "high" | "xhigh" | "max"),
+    };
+    if supported {
+        Ok(value.to_string())
+    } else {
+        Err("choose an effort level supported by the selected AI runtime".into())
     }
-    Err("choose an effort level supported by the selected AI runtime".into())
 }
 
 fn profile_value<'a>(schema: &'a str, field: &str) -> Option<&'a str> {
@@ -2913,7 +2921,8 @@ mod tests {
             "Claude CLI"
         );
         assert!(vault_profile_with_brain_profile("English", "other", "", "", "", "research").is_err());
-        assert!(vault_profile_with_brain_profile("English", "codex", "", "max", "", "research").is_err());
+        assert!(vault_profile_with_brain_profile("English", "codex", "gpt-5.6", "ultra", "", "research").is_ok());
+        assert!(vault_profile_with_brain_profile("English", "claude", "", "ultra", "", "research").is_err());
     }
 
     #[test]

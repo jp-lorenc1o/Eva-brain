@@ -290,8 +290,7 @@ const brainManagerLanguageEl = document.getElementById('brain-manager-language')
 const brainManagerAgentEls = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="brain-manager-agent"]'),
 );
-const brainManagerModelEl = document.getElementById('brain-manager-model') as HTMLInputElement;
-const brainManagerModelOptionsEl = document.getElementById('brain-manager-model-options') as HTMLDataListElement;
+const brainManagerModelsEl = document.getElementById('brain-manager-models') as HTMLElement;
 const brainManagerEffortEl = document.getElementById('brain-manager-effort') as HTMLSelectElement;
 const brainManagerPurposeEl = document.getElementById('brain-manager-purpose') as HTMLTextAreaElement;
 const brainManagerErrorEl = document.getElementById('brain-manager-error') as HTMLElement;
@@ -309,8 +308,7 @@ const newVaultLanguageEl = document.getElementById('new-vault-language') as HTML
 const newVaultAgentEls = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="new-vault-agent"]'),
 );
-const newVaultModelEl = document.getElementById('new-vault-model') as HTMLInputElement;
-const newVaultModelOptionsEl = document.getElementById('new-vault-model-options') as HTMLDataListElement;
+const newVaultModelsEl = document.getElementById('new-vault-models') as HTMLElement;
 const newVaultEffortEl = document.getElementById('new-vault-effort') as HTMLSelectElement;
 const newVaultPurposeEl = document.getElementById('new-vault-purpose') as HTMLTextAreaElement;
 const newVaultPurposeLabelEl = document.getElementById('new-vault-purpose-label') as HTMLElement;
@@ -400,41 +398,76 @@ function selectedNewVaultProfile(): BrainProfileId {
 
 type AgentChoice = 'codex' | 'claude';
 
-const AGENT_MODEL_SUGGESTIONS: Record<AgentChoice, string[]> = {
-  // Claude documents these aliases as stable selectors. Codex keeps the field
-  // deliberately open because the models available to a local sign-in vary.
-  codex: [],
-  claude: ['fable', 'opus', 'sonnet'],
+interface AgentModelOption {
+  value: string;
+  label: string;
+}
+
+const AGENT_MODELS: Record<AgentChoice, AgentModelOption[]> = {
+  codex: [
+    { value: 'gpt-5.6', label: 'GPT-5.6' },
+    { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+    { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+    { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+    { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' },
+  ],
+  claude: [
+    { value: 'fable', label: 'Fable' },
+    { value: 'opus', label: 'Opus' },
+    { value: 'sonnet', label: 'Sonnet' },
+  ],
 };
 
 const AGENT_EFFORTS: Record<AgentChoice, string[]> = {
-  codex: ['low', 'medium', 'high', 'xhigh'],
+  codex: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   claude: ['low', 'medium', 'high', 'xhigh', 'max'],
 };
 
 const EFFORT_TRANSLATIONS: Record<string, TranslationKey> = {
+  none: 'ai.none',
+  minimal: 'ai.minimal',
   low: 'ai.low',
   medium: 'ai.medium',
   high: 'ai.high',
   xhigh: 'ai.xhigh',
   max: 'ai.max',
+  ultra: 'ai.ultra',
 };
 
 function agentChoice(value: string): AgentChoice {
   return value === 'claude' ? 'claude' : 'codex';
 }
 
+function selectedAgentModel(modelsEl: HTMLElement): string {
+  return modelsEl.querySelector<HTMLInputElement>('input:checked')?.value ?? '';
+}
+
 function populateAgentPreferences(
   agent: AgentChoice,
-  modelOptions: HTMLDataListElement,
+  modelsEl: HTMLElement,
+  modelInputName: string,
   effort: HTMLSelectElement,
+  selectedModel = selectedAgentModel(modelsEl),
   selectedEffort = effort.value,
 ): void {
-  modelOptions.innerHTML = '';
-  for (const model of AGENT_MODEL_SUGGESTIONS[agent]) {
-    const option = document.createElement('option');
-    option.value = model;
-    modelOptions.appendChild(option);
+  modelsEl.innerHTML = '';
+  const models = [...AGENT_MODELS[agent]];
+  if (selectedModel && !models.some((model) => model.value === selectedModel)) {
+    models.push({ value: selectedModel, label: `${t('ai.savedModel')}: ${selectedModel}` });
+  }
+  for (const model of [{ value: '', label: t('ai.default') }, ...models]) {
+    const card = document.createElement('label');
+    card.className = 'model-choice';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = modelInputName;
+    input.value = model.value;
+    input.checked = model.value === selectedModel;
+    const name = document.createElement('span');
+    name.className = 'model-choice-name';
+    name.textContent = model.label;
+    card.append(input, name);
+    modelsEl.appendChild(card);
   }
   effort.innerHTML = '';
   const defaultOption = document.createElement('option');
@@ -450,19 +483,23 @@ function populateAgentPreferences(
   effort.value = AGENT_EFFORTS[agent].includes(selectedEffort) ? selectedEffort : '';
 }
 
-function updateNewVaultAgentPreferences(): void {
+function updateNewVaultAgentPreferences(selectedModel?: string): void {
   populateAgentPreferences(
     agentChoice(selectedNewVaultAgent()),
-    newVaultModelOptionsEl,
+    newVaultModelsEl,
+    'new-vault-model',
     newVaultEffortEl,
+    selectedModel,
   );
 }
 
-function updateBrainManagerAgentPreferences(): void {
+function updateBrainManagerAgentPreferences(selectedModel?: string): void {
   populateAgentPreferences(
     agentChoice(selectedBrainManagerAgent()),
-    brainManagerModelOptionsEl,
+    brainManagerModelsEl,
+    'brain-manager-model',
     brainManagerEffortEl,
+    selectedModel,
   );
 }
 
@@ -1099,11 +1136,12 @@ function renderBrainManager(): void {
   brainManagerAgentEls.forEach((input) => {
     input.checked = input.value === settings.agent;
   });
-  brainManagerModelEl.value = settings.model;
   populateAgentPreferences(
     agentChoice(settings.agent),
-    brainManagerModelOptionsEl,
+    brainManagerModelsEl,
+    'brain-manager-model',
     brainManagerEffortEl,
+    settings.model,
     settings.effort,
   );
   brainManagerPurposeEl.value = settings.purpose;
@@ -1199,7 +1237,7 @@ async function saveBrainManagerSettings(): Promise<void> {
       profile: profileDefinition(brainManagerProfileEl.value).id,
       language,
       agent,
-      model: brainManagerModelEl.value.trim(),
+      model: selectedAgentModel(brainManagerModelsEl),
       effort: brainManagerEffortEl.value,
       purpose: brainManagerPurposeEl.value.trim(),
     });
@@ -1268,8 +1306,7 @@ function resetNewVaultAgent(): void {
   newVaultAgentEls.forEach((input) => {
     input.checked = input.value === 'codex';
   });
-  newVaultModelEl.value = '';
-  populateAgentPreferences('codex', newVaultModelOptionsEl, newVaultEffortEl, '');
+  populateAgentPreferences('codex', newVaultModelsEl, 'new-vault-model', newVaultEffortEl, '', '');
 }
 
 function updateNewVaultCreateState(): void {
@@ -1322,7 +1359,7 @@ async function createNewVault(): Promise<void> {
       profile: selectedNewVaultProfile(),
       language,
       agent: selectedNewVaultAgent(),
-      model: newVaultModelEl.value.trim(),
+      model: selectedAgentModel(newVaultModelsEl),
       effort: newVaultEffortEl.value,
       purpose: newVaultPurposeEl.value.trim(),
     });
@@ -3097,8 +3134,7 @@ brainManagerProfileEl.addEventListener('change', () => {
 });
 brainManagerAgentEls.forEach((input) =>
   input.addEventListener('change', () => {
-    brainManagerModelEl.value = '';
-    updateBrainManagerAgentPreferences();
+    updateBrainManagerAgentPreferences('');
   }),
 );
 document.getElementById('app-settings-close')!.addEventListener('click', closeAppSettings);
@@ -3119,8 +3155,7 @@ newVaultProfileEl.addEventListener('change', () => {
 });
 newVaultAgentEls.forEach((input) =>
   input.addEventListener('change', () => {
-    newVaultModelEl.value = '';
-    updateNewVaultAgentPreferences();
+    updateNewVaultAgentPreferences('');
     setNewVaultError(null);
     updateNewVaultCreateState();
   }),
