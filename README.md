@@ -5,6 +5,12 @@ LLM. Instead of repeatedly retrieving from raw documents at question time, Eva
 helps an agent maintain a durable, linked Markdown brain between the sources
 and the user.
 
+## Platform support
+
+Eva V1 intentionally targets macOS only. Tauri itself supports Windows and
+Linux, but neither platform has been built or tested against this codebase;
+expanding support is a deliberate future product decision, not an oversight.
+
 The versioned on-disk and operational contract is the
 [`Eva Brain Standard v1`](docs/EVA_BRAIN_STANDARD.md). Its `eva.json` marker
 lets Eva identify a compatible brain before it applies agent workflows, while
