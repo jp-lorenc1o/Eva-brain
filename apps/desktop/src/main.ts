@@ -173,10 +173,18 @@ interface GraphCamera {
   zoom: number;
 }
 
+type FloatingPanelName = 'map' | 'legend';
+
+interface FloatingPanelPosition {
+  left: number;
+  top: number;
+}
+
 interface SavedGraphLayout {
   version: 1;
   camera: GraphCamera;
   nodes: Record<string, { x: number; y: number }>;
+  floating?: Partial<Record<FloatingPanelName, FloatingPanelPosition>>;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -306,6 +314,7 @@ let graphCamera: GraphCamera = { x: 0, y: 0, zoom: 1 };
 let graphPan: { pointerId: number; clientX: number; clientY: number; cameraX: number; cameraY: number; moved: boolean } | null = null;
 let suppressGraphClickUntil = 0;
 let lockGraphWhenSettled = false;
+let floatingPanelPositions: Partial<Record<FloatingPanelName, FloatingPanelPosition>> = {};
 let reviewId: number | null = null;
 let reviewKind: 'ingest' | 'query' | null = null;
 let latestQuery: { question: string; answer: QueryAnswer } | null = null;
@@ -485,6 +494,45 @@ function graphStorageKey(): string | null {
   return currentVault ? `${GRAPH_LAYOUT_STORAGE_PREFIX}${currentVault}` : null;
 }
 
+const floatingPanels: Record<FloatingPanelName, HTMLElement> = {
+  map: graphNavigationEl,
+  legend: legendEl,
+};
+
+function normalizeFloatingPanelPositions(candidate: unknown): Partial<Record<FloatingPanelName, FloatingPanelPosition>> {
+  if (!candidate || typeof candidate !== 'object') return {};
+  const source = candidate as Record<string, unknown>;
+  const positions: Partial<Record<FloatingPanelName, FloatingPanelPosition>> = {};
+  for (const name of ['map', 'legend'] as const) {
+    const point = source[name];
+    if (!point || typeof point !== 'object') continue;
+    const { left, top } = point as Partial<FloatingPanelPosition>;
+    if (typeof left !== 'number' || typeof top !== 'number' || !Number.isFinite(left) || !Number.isFinite(top)) continue;
+    positions[name] = { left, top };
+  }
+  return positions;
+}
+
+function resetFloatingPanelPositions(): void {
+  floatingPanelPositions = {};
+  for (const panel of Object.values(floatingPanels)) {
+    panel.style.removeProperty('left');
+    panel.style.removeProperty('top');
+    panel.style.removeProperty('right');
+    panel.style.removeProperty('bottom');
+  }
+}
+
+function applyFloatingPanelPositions(): void {
+  for (const [name, point] of Object.entries(floatingPanelPositions) as [FloatingPanelName, FloatingPanelPosition][]) {
+    const panel = floatingPanels[name];
+    panel.style.left = `${point.left}px`;
+    panel.style.top = `${point.top}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+}
+
 function normalizeGraphCamera(candidate: unknown): GraphCamera | null {
   if (!candidate || typeof candidate !== 'object') return null;
   const { x, y, zoom } = candidate as Partial<GraphCamera>;
@@ -509,9 +557,12 @@ function readSavedGraphLayout(): SavedGraphLayout | null {
 }
 
 function applySavedGraphLayout(nodes: SimNode[]): boolean {
+  resetFloatingPanelPositions();
   const saved = readSavedGraphLayout();
   if (!saved) return false;
   graphCamera = saved.camera;
+  floatingPanelPositions = normalizeFloatingPanelPositions(saved.floating);
+  applyFloatingPanelPositions();
   let restored = 0;
   for (const node of nodes) {
     const point = saved.nodes[node.id];
@@ -538,7 +589,10 @@ function persistGraphLayout(): void {
     nodes[node.id] = { x, y };
   }
   try {
-    localStorage.setItem(key, JSON.stringify({ version: 1, camera: graphCamera, nodes } satisfies SavedGraphLayout));
+    localStorage.setItem(
+      key,
+      JSON.stringify({ version: 1, camera: graphCamera, nodes, floating: floatingPanelPositions } satisfies SavedGraphLayout),
+    );
   } catch {
     // The map remains usable if this webview cannot write preferences.
   }
@@ -2750,6 +2804,68 @@ operationScrimEl.addEventListener('click', () => {
   else if (!appSettingsEl.hidden) closeAppSettings();
   else closeSidePanels();
 });
+
+function makeFloatingPanelDraggable(
+  panel: HTMLElement,
+  name: FloatingPanelName,
+  isHandle: (target: Element | null) => boolean,
+): void {
+  let drag: { pointerId: number; clientX: number; clientY: number; left: number; top: number; moved: boolean } | null = null;
+
+  const endDrag = (event: PointerEvent) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const moved = drag.moved;
+    drag = null;
+    panel.classList.remove('is-dragging');
+    try {
+      panel.releasePointerCapture(event.pointerId);
+    } catch {
+      /* synthetic pointers are never captured */
+    }
+    if (moved) persistGraphLayout();
+  };
+
+  panel.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!isHandle(target)) return;
+    event.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    drag = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      moved: false,
+    };
+    panel.classList.add('is-dragging');
+    try {
+      panel.setPointerCapture(event.pointerId);
+    } catch {
+      /* synthetic pointers are never captured */
+    }
+  });
+
+  panel.addEventListener('pointermove', (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const deltaX = event.clientX - drag.clientX;
+    const deltaY = event.clientY - drag.clientY;
+    if (Math.hypot(deltaX, deltaY) > 3) drag.moved = true;
+    const rect = panel.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - rect.width - 8, Math.max(8, drag.left + deltaX));
+    const top = Math.min(window.innerHeight - rect.height - 8, Math.max(8, drag.top + deltaY));
+    floatingPanelPositions[name] = { left, top };
+    applyFloatingPanelPositions();
+  });
+
+  panel.addEventListener('pointerup', endDrag);
+  panel.addEventListener('pointercancel', endDrag);
+}
+
+makeFloatingPanelDraggable(graphNavigationEl, 'map', (target) => Boolean(target?.closest('.graph-navigation-kicker')));
+makeFloatingPanelDraggable(legendEl, 'legend', () => true);
 
 graphZoomOutEl.addEventListener('click', () => {
   zoomGraphAt(window.innerWidth / 2, window.innerHeight / 2, graphCamera.zoom / 1.22);

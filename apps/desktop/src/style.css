@@ -481,8 +481,8 @@ body::after {
    toolbar. It makes a dense brain explorable without competing with the
    writing tools above it. */
 #graph-navigation {
-  right: 22px;
-  bottom: 20px;
+  left: 16px;
+  bottom: 64px;
   z-index: 2;
   display: grid;
   min-width: 126px;
@@ -503,6 +503,24 @@ body::after {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-dim);
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.graph-navigation-kicker::after {
+  content: '⠿';
+  float: right;
+  font-size: 12px;
+  line-height: 0.65;
+  letter-spacing: 0;
+  color: rgba(117, 114, 110, 0.62);
+}
+
+.graph-navigation.is-dragging .graph-navigation-kicker,
+#legend.is-dragging {
+  cursor: grabbing;
 }
 
 .graph-zoom-controls {
@@ -2132,6 +2150,10 @@ button.issue:hover {
   gap: 14px;
   padding: 8px 14px;
   border-radius: 999px;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 #legend .key {
