@@ -290,6 +290,9 @@ const brainManagerLanguageEl = document.getElementById('brain-manager-language')
 const brainManagerAgentEls = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="brain-manager-agent"]'),
 );
+const brainManagerModelEl = document.getElementById('brain-manager-model') as HTMLInputElement;
+const brainManagerModelOptionsEl = document.getElementById('brain-manager-model-options') as HTMLDataListElement;
+const brainManagerEffortEl = document.getElementById('brain-manager-effort') as HTMLSelectElement;
 const brainManagerPurposeEl = document.getElementById('brain-manager-purpose') as HTMLTextAreaElement;
 const brainManagerErrorEl = document.getElementById('brain-manager-error') as HTMLElement;
 const brainManagerStatusEl = document.getElementById('brain-manager-status') as HTMLElement;
@@ -306,6 +309,9 @@ const newVaultLanguageEl = document.getElementById('new-vault-language') as HTML
 const newVaultAgentEls = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="new-vault-agent"]'),
 );
+const newVaultModelEl = document.getElementById('new-vault-model') as HTMLInputElement;
+const newVaultModelOptionsEl = document.getElementById('new-vault-model-options') as HTMLDataListElement;
+const newVaultEffortEl = document.getElementById('new-vault-effort') as HTMLSelectElement;
 const newVaultPurposeEl = document.getElementById('new-vault-purpose') as HTMLTextAreaElement;
 const newVaultPurposeLabelEl = document.getElementById('new-vault-purpose-label') as HTMLElement;
 const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElement;
@@ -392,6 +398,74 @@ function selectedNewVaultProfile(): BrainProfileId {
   return profileDefinition(newVaultProfileEl.value).id;
 }
 
+type AgentChoice = 'codex' | 'claude';
+
+const AGENT_MODEL_SUGGESTIONS: Record<AgentChoice, string[]> = {
+  // Claude documents these aliases as stable selectors. Codex keeps the field
+  // deliberately open because the models available to a local sign-in vary.
+  codex: [],
+  claude: ['fable', 'opus', 'sonnet'],
+};
+
+const AGENT_EFFORTS: Record<AgentChoice, string[]> = {
+  codex: ['low', 'medium', 'high', 'xhigh'],
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+};
+
+const EFFORT_TRANSLATIONS: Record<string, TranslationKey> = {
+  low: 'ai.low',
+  medium: 'ai.medium',
+  high: 'ai.high',
+  xhigh: 'ai.xhigh',
+  max: 'ai.max',
+};
+
+function agentChoice(value: string): AgentChoice {
+  return value === 'claude' ? 'claude' : 'codex';
+}
+
+function populateAgentPreferences(
+  agent: AgentChoice,
+  modelOptions: HTMLDataListElement,
+  effort: HTMLSelectElement,
+  selectedEffort = effort.value,
+): void {
+  modelOptions.innerHTML = '';
+  for (const model of AGENT_MODEL_SUGGESTIONS[agent]) {
+    const option = document.createElement('option');
+    option.value = model;
+    modelOptions.appendChild(option);
+  }
+  effort.innerHTML = '';
+  const defaultOption = document.createElement('option');
+  defaultOption.value = '';
+  defaultOption.textContent = t('ai.default');
+  effort.appendChild(defaultOption);
+  for (const value of AGENT_EFFORTS[agent]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = t(EFFORT_TRANSLATIONS[value]);
+    effort.appendChild(option);
+  }
+  effort.value = AGENT_EFFORTS[agent].includes(selectedEffort) ? selectedEffort : '';
+}
+
+function updateNewVaultAgentPreferences(): void {
+  populateAgentPreferences(
+    agentChoice(selectedNewVaultAgent()),
+    newVaultModelOptionsEl,
+    newVaultEffortEl,
+  );
+}
+
+function updateBrainManagerAgentPreferences(): void {
+  populateAgentPreferences(
+    agentChoice(selectedBrainManagerAgent()),
+    brainManagerModelOptionsEl,
+    brainManagerEffortEl,
+  );
+}
+
 function updateNewVaultProfileFrame(): void {
   const profile = profileDefinition(selectedNewVaultProfile());
   newVaultProfileDetailEl.textContent = ui('profile.detail');
@@ -428,6 +502,8 @@ function applyInterfaceLanguage(): void {
   populateAppLanguageOptions();
   populateBrainProfileOptions(newVaultProfileEl, newVaultProfileEl.value || 'research');
   updateNewVaultProfileFrame();
+  updateNewVaultAgentPreferences();
+  updateBrainManagerAgentPreferences();
   if (!currentVault) vaultPathEl.textContent = t('nav.noBrain');
   const selectedId = svg.querySelector<SVGGElement>('.node.selected')?.dataset.id;
   if (vault) renderLegend(exploredPages());
@@ -849,6 +925,8 @@ interface BrainSettings extends BrainEntry {
   modules: string[];
   language: string;
   agent: 'codex' | 'claude';
+  model: string;
+  effort: string;
   purpose: string;
 }
 
@@ -1021,6 +1099,13 @@ function renderBrainManager(): void {
   brainManagerAgentEls.forEach((input) => {
     input.checked = input.value === settings.agent;
   });
+  brainManagerModelEl.value = settings.model;
+  populateAgentPreferences(
+    agentChoice(settings.agent),
+    brainManagerModelOptionsEl,
+    brainManagerEffortEl,
+    settings.effort,
+  );
   brainManagerPurposeEl.value = settings.purpose;
   brainManagerSaveEl.disabled = brainManagerSaving;
 }
@@ -1114,6 +1199,8 @@ async function saveBrainManagerSettings(): Promise<void> {
       profile: profileDefinition(brainManagerProfileEl.value).id,
       language,
       agent,
+      model: brainManagerModelEl.value.trim(),
+      effort: brainManagerEffortEl.value,
       purpose: brainManagerPurposeEl.value.trim(),
     });
     if (currentVault === settings.path) {
@@ -1181,6 +1268,8 @@ function resetNewVaultAgent(): void {
   newVaultAgentEls.forEach((input) => {
     input.checked = input.value === 'codex';
   });
+  newVaultModelEl.value = '';
+  populateAgentPreferences('codex', newVaultModelOptionsEl, newVaultEffortEl, '');
 }
 
 function updateNewVaultCreateState(): void {
@@ -1233,6 +1322,8 @@ async function createNewVault(): Promise<void> {
       profile: selectedNewVaultProfile(),
       language,
       agent: selectedNewVaultAgent(),
+      model: newVaultModelEl.value.trim(),
+      effort: newVaultEffortEl.value,
       purpose: newVaultPurposeEl.value.trim(),
     });
     closeNewVault();
@@ -3004,6 +3095,12 @@ brainManagerProfileEl.addEventListener('change', () => {
   const profile = profileDefinition(brainManagerProfileEl.value);
   brainManagerModulesEl.textContent = ui('profile.modules', { count: profile.modules.length });
 });
+brainManagerAgentEls.forEach((input) =>
+  input.addEventListener('change', () => {
+    brainManagerModelEl.value = '';
+    updateBrainManagerAgentPreferences();
+  }),
+);
 document.getElementById('app-settings-close')!.addEventListener('click', closeAppSettings);
 appLanguageEl.addEventListener('change', changeAppLanguage);
 document.getElementById('new-vault-cancel')!.addEventListener('click', closeNewVault);
@@ -3022,6 +3119,8 @@ newVaultProfileEl.addEventListener('change', () => {
 });
 newVaultAgentEls.forEach((input) =>
   input.addEventListener('change', () => {
+    newVaultModelEl.value = '';
+    updateNewVaultAgentPreferences();
     setNewVaultError(null);
     updateNewVaultCreateState();
   }),

@@ -1723,6 +1723,42 @@ button.query-citation:hover {
   display: block;
 }
 
+/* The runtime card chooses the engine; this paired, ledger-like strip records
+   how deliberately Eva should think. It stays compact because it governs
+   every operation in the brain rather than being a separate task. */
+.agent-preferences {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr);
+  gap: 9px 10px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(236, 235, 225, 0.44);
+}
+
+.agent-preference-field {
+  min-width: 0;
+}
+
+.agent-preference-field .form-label {
+  display: block;
+}
+
+.agent-preference-field .text-input {
+  width: 100%;
+}
+
+.agent-preference-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: 7px;
+  border-top: 1px solid rgba(217, 215, 201, 0.86);
+  color: var(--ink-dim);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .runtime-choice-name {
   color: var(--ink);
   font-family: var(--font-data);
@@ -2587,7 +2623,8 @@ line.edge.lit {
   }
 
   .profile-tools-other-list,
-  .profile-tools-config-grid {
+  .profile-tools-config-grid,
+  .agent-preferences {
     grid-template-columns: 1fr;
   }
 }

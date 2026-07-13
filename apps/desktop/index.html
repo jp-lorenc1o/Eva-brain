@@ -247,6 +247,18 @@
                 <span class="runtime-choice-detail" data-i18n="manager.claude">Use the Claude CLI signed in on this Mac.</span>
               </label>
             </div>
+            <div class="agent-preferences">
+              <label class="agent-preference-field" for="brain-manager-model">
+                <span class="form-label" data-i18n="ai.model">Model</span>
+                <input id="brain-manager-model" class="text-input compact" type="text" list="brain-manager-model-options" maxlength="120" autocomplete="off" spellcheck="false" data-i18n-placeholder="ai.modelPlaceholder" placeholder="Runtime default" />
+                <datalist id="brain-manager-model-options"></datalist>
+              </label>
+              <label class="agent-preference-field" for="brain-manager-effort">
+                <span class="form-label" data-i18n="ai.effort">Reasoning effort</span>
+                <select id="brain-manager-effort" class="text-input compact"></select>
+              </label>
+              <p class="agent-preference-hint" data-i18n="ai.hint">Applies to Ingest, Query, Health, and tools in this brain.</p>
+            </div>
           </fieldset>
           <label class="form-label" for="brain-manager-purpose"><span data-i18n="manager.purpose">What is this brain for?</span> <span class="optional" data-i18n="common.optional">Optional</span></label>
           <textarea id="brain-manager-purpose" class="purpose-input" rows="2" maxlength="240"></textarea>
@@ -310,6 +322,18 @@
               <span class="runtime-choice-name">Claude Code</span>
               <span class="runtime-choice-detail" data-i18n="new.claude">Use the Claude CLI already signed in on this Mac.</span>
             </label>
+          </div>
+          <div class="agent-preferences">
+            <label class="agent-preference-field" for="new-vault-model">
+              <span class="form-label" data-i18n="ai.model">Model</span>
+              <input id="new-vault-model" class="text-input compact" type="text" list="new-vault-model-options" maxlength="120" autocomplete="off" spellcheck="false" data-i18n-placeholder="ai.modelPlaceholder" placeholder="Runtime default" />
+              <datalist id="new-vault-model-options"></datalist>
+            </label>
+            <label class="agent-preference-field" for="new-vault-effort">
+              <span class="form-label" data-i18n="ai.effort">Reasoning effort</span>
+              <select id="new-vault-effort" class="text-input compact"></select>
+            </label>
+            <p class="agent-preference-hint" data-i18n="ai.hint">Applies to Ingest, Query, Health, and tools in this brain.</p>
           </div>
           <p class="field-hint" data-i18n="new.credentials">Eva stores no credentials. The selected runtime is saved with this local brain.</p>
         </fieldset>

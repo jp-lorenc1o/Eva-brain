@@ -23,8 +23,17 @@ const BRAIN_STANDARD_VERSION: u64 = 1;
 struct VaultProfile {
     language: String,
     agent: String,
+    model: String,
+    effort: String,
     purpose: String,
     brain_profile: BrainProfile,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentConfig {
+    runtime: AgentRuntime,
+    model: String,
+    effort: String,
 }
 
 #[derive(Deserialize)]
@@ -297,6 +306,8 @@ pub struct BrainSettings {
     pub modules: Vec<String>,
     pub language: String,
     pub agent: String,
+    pub model: String,
+    pub effort: String,
     pub purpose: String,
 }
 
@@ -652,6 +663,8 @@ fn profile_text(value: &str, field: &str, max: usize, required: bool) -> Result<
 fn vault_profile_with_brain_profile(
     language: &str,
     agent: &str,
+    model: &str,
+    effort: &str,
     purpose: &str,
     brain_profile: &str,
 ) -> Result<VaultProfile, String> {
@@ -659,9 +672,33 @@ fn vault_profile_with_brain_profile(
     Ok(VaultProfile {
         language: profile_text(language, "working language", 48, true)?,
         agent: runtime.profile_label().into(),
+        model: agent_model(model)?,
+        effort: agent_effort(runtime, effort)?,
         purpose: profile_text(purpose, "purpose", 240, false)?,
         brain_profile: BrainProfile::from_choice(brain_profile)?,
     })
+}
+
+fn agent_model(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.chars().count() > 120
+        || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
+    {
+        return Err("model must be a single identifier of 120 characters or fewer".into());
+    }
+    Ok(value.to_string())
+}
+
+fn agent_effort(runtime: AgentRuntime, value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() || matches!(value, "low" | "medium" | "high" | "xhigh") {
+        return Ok(value.to_string());
+    }
+    if runtime == AgentRuntime::Claude && value == "max" {
+        return Ok(value.to_string());
+    }
+    Err("choose an effort level supported by the selected AI runtime".into())
 }
 
 fn profile_value<'a>(schema: &'a str, field: &str) -> Option<&'a str> {
@@ -677,16 +714,35 @@ fn profile_value<'a>(schema: &'a str, field: &str) -> Option<&'a str> {
 /// before runtime choice existed continue to use Claude so their behavior does
 /// not change underneath their owner.
 fn runtime_for_vault(vault: &Path) -> Result<AgentRuntime, String> {
+    Ok(agent_config_for_vault(vault)?.runtime)
+}
+
+fn agent_config_for_vault(vault: &Path) -> Result<AgentConfig, String> {
     let schema = fs::read_to_string(vault.join("EVA.md"))
         .map_err(|e| format!("read EVA.md: {e}"))?;
     let Some(label) = profile_value(&schema, "Agent runtime") else {
-        return Ok(AgentRuntime::Claude);
+        return Ok(AgentConfig {
+            runtime: AgentRuntime::Claude,
+            model: String::new(),
+            effort: String::new(),
+        });
     };
-    AgentRuntime::from_profile_label(label).ok_or_else(|| {
+    let runtime = AgentRuntime::from_profile_label(label).ok_or_else(|| {
         format!(
             "Eva does not support the brain's configured AI runtime: {}",
             label.trim()
         )
+    })?;
+    let model = profile_value(&schema, "AI model")
+        .filter(|value| *value != "Runtime default")
+        .unwrap_or("");
+    let effort = profile_value(&schema, "Reasoning effort")
+        .filter(|value| *value != "Runtime default")
+        .unwrap_or("");
+    Ok(AgentConfig {
+        runtime,
+        model: agent_model(model)?,
+        effort: agent_effort(runtime, effort)?,
     })
 }
 
@@ -702,6 +758,15 @@ fn ensure_agent_available(runtime: AgentRuntime) -> Result<(), String> {
             "{} CLI could not start; check its local sign-in and installation",
             runtime.display_name()
         ))
+    }
+}
+
+fn apply_claude_config(command: &mut Command, config: &AgentConfig) {
+    if !config.model.is_empty() {
+        command.args(["--model", &config.model]);
+    }
+    if !config.effort.is_empty() {
+        command.args(["--effort", &config.effort]);
     }
 }
 
@@ -733,8 +798,12 @@ fn profile_section(profile: &VaultProfile) -> String {
         profile.purpose.clone()
     };
     format!(
-        "### Active profile\n\n- **Working language:** {}\n- **Agent runtime:** {}\n- **Purpose:** {}\n\nWrite and maintain wiki pages in the working language unless the human asks otherwise.\n",
-        profile.language, profile.agent, purpose
+        "### Active profile\n\n- **Working language:** {}\n- **Agent runtime:** {}\n- **AI model:** {}\n- **Reasoning effort:** {}\n- **Purpose:** {}\n\nWrite and maintain wiki pages in the working language unless the human asks otherwise.\n",
+        profile.language,
+        profile.agent,
+        if profile.model.is_empty() { "Runtime default" } else { &profile.model },
+        if profile.effort.is_empty() { "Runtime default" } else { &profile.effort },
+        purpose
     )
 }
 
@@ -817,13 +886,16 @@ fn brain_settings(vault: &Path) -> Result<BrainSettings, String> {
         .filter(|value| *value != "Not specified yet.")
         .unwrap_or("")
         .to_string();
+    let agent = agent_config_for_vault(&root)?;
     Ok(BrainSettings {
         name: entry.name,
         path: entry.path,
         profile: brain_profile.id().into(),
         modules: brain_profile.modules().iter().map(|module| (*module).into()).collect(),
         language,
-        agent: runtime_for_vault(&root)?.setup_choice().to_string(),
+        agent: agent.runtime.setup_choice().to_string(),
+        model: agent.model,
+        effort: agent.effort,
         purpose,
     })
 }
@@ -832,11 +904,13 @@ fn update_brain_settings(
     vault: &Path,
     language: &str,
     agent: &str,
+    model: &str,
+    effort: &str,
     purpose: &str,
     brain_profile: &str,
 ) -> Result<BrainSettings, String> {
     let root = require_eva_brain(vault)?;
-    let profile = vault_profile_with_brain_profile(language, agent, purpose, brain_profile)?;
+    let profile = vault_profile_with_brain_profile(language, agent, model, effort, purpose, brain_profile)?;
     if !git(&root, &["status", "--porcelain"])?.trim().is_empty() {
         return Err("commit or resolve the brain's current changes before updating its settings".into());
     }
@@ -1164,6 +1238,7 @@ fn drive_claude_agent(
     job: &Job,
     worktree: &Path,
     profile: BrainProfile,
+    config: &AgentConfig,
 ) -> Result<String, String> {
     let server = tools_dir()?.join("server.mjs");
     let cfg = serde_json::json!({
@@ -1194,7 +1269,8 @@ When you are done, reply with a one-paragraph summary of what you created and up
         ingest_guidance = profile.ingest_guidance(),
     );
 
-    let mut child = Command::new("claude")
+    let mut command = Command::new("claude");
+    command
         .args([
             "-p",
             &prompt,
@@ -1210,7 +1286,9 @@ When you are done, reply with a one-paragraph summary of what you created and up
         ])
         .current_dir(worktree)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    apply_claude_config(&mut command, config);
+    let mut child = command
         .spawn()
         .map_err(|e| format!("failed to start claude: {e}"))?;
 
@@ -1299,6 +1377,7 @@ fn drive_claude_query_agent(
     vault: &Path,
     question: &str,
     scope: &[String],
+    config: &AgentConfig,
 ) -> Result<QueryAnswer, String> {
     let server = tools_dir()?.join("server.mjs");
     let cfg = serde_json::json!({
@@ -1333,7 +1412,8 @@ Question: {question}"#,
             scope_instruction = working_set_instruction(scope),
         );
 
-        let mut child = Command::new("claude")
+        let mut command = Command::new("claude");
+        command
             .args([
                 "-p",
                 &prompt,
@@ -1349,7 +1429,9 @@ Question: {question}"#,
             ])
             .current_dir(vault)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        apply_claude_config(&mut command, config);
+        let mut child = command
             .spawn()
             .map_err(|e| format!("failed to start claude: {e}"))?;
 
@@ -1396,7 +1478,11 @@ Question: {question}"#,
 /// A health check is intentionally advisory. It receives the same read-only
 /// navigation tools as Query and may surface evidence-backed maintenance work,
 /// but it cannot edit, commit, or turn a suggestion into a fact on its own.
-fn drive_claude_health_agent(vault: &Path, profile: BrainProfile) -> Result<HealthReport, String> {
+fn drive_claude_health_agent(
+    vault: &Path,
+    profile: BrainProfile,
+    config: &AgentConfig,
+) -> Result<HealthReport, String> {
     let server = tools_dir()?.join("server.mjs");
     let cfg = serde_json::json!({
         "mcpServers": {
@@ -1430,7 +1516,8 @@ fn drive_claude_health_agent(vault: &Path, profile: BrainProfile) -> Result<Heal
             maintenance_guidance = profile.maintenance_guidance(),
         );
 
-        let mut child = Command::new("claude")
+        let mut command = Command::new("claude");
+        command
             .args([
                 "-p",
                 &prompt,
@@ -1446,7 +1533,9 @@ fn drive_claude_health_agent(vault: &Path, profile: BrainProfile) -> Result<Heal
             ])
             .current_dir(vault)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        apply_claude_config(&mut command, config);
+        let mut child = command
             .spawn()
             .map_err(|e| format!("failed to start claude: {e}"))?;
 
@@ -1495,6 +1584,7 @@ fn drive_claude_profile_tool(
     tool: ProfileTool,
     options: &ProfileToolOptions,
     scope: &[String],
+    config: &AgentConfig,
 ) -> Result<ProfileToolResult, String> {
     let server = tools_dir()?.join("server.mjs");
     let cfg = serde_json::json!({
@@ -1515,7 +1605,8 @@ fn drive_claude_profile_tool(
 
     let result = (|| -> Result<ProfileToolResult, String> {
         let prompt = profile_tool_prompt(profile, tool, options, scope);
-        let mut child = Command::new("claude")
+        let mut command = Command::new("claude");
+        command
             .args([
                 "-p",
                 &prompt,
@@ -1531,7 +1622,9 @@ fn drive_claude_profile_tool(
             ])
             .current_dir(vault)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        apply_claude_config(&mut command, config);
+        let mut child = command
             .spawn()
             .map_err(|e| format!("failed to start claude: {e}"))?;
         let mut stderr = child.stderr.take().unwrap();
@@ -1579,6 +1672,7 @@ fn run_codex_agent(
     prompt: &str,
     sandbox: &str,
     output_schema: Option<serde_json::Value>,
+    config: &AgentConfig,
 ) -> Result<String, String> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1609,6 +1703,14 @@ fn run_codex_agent(
             "--output-last-message",
             &output_path.to_string_lossy(),
         ]);
+        if !config.model.is_empty() {
+            command.args(["--model", &config.model]);
+        }
+        if !config.effort.is_empty() {
+            command
+                .arg("-c")
+                .arg(format!("model_reasoning_effort={:?}", config.effort));
+        }
         if let Some(path) = schema_path.as_ref() {
             command.args(["--output-schema", &path.to_string_lossy()]);
         }
@@ -1838,6 +1940,7 @@ fn drive_codex_agent(
     job: &Job,
     worktree: &Path,
     profile: BrainProfile,
+    config: &AgentConfig,
 ) -> Result<String, String> {
     let _ = app.emit(
         "ingest:activity",
@@ -1858,13 +1961,14 @@ When finished, reply with one paragraph describing the pages you created or upda
         profile = profile.label(),
         ingest_guidance = profile.ingest_guidance(),
     );
-    run_codex_agent(worktree, &prompt, "workspace-write", None)
+    run_codex_agent(worktree, &prompt, "workspace-write", None, config)
 }
 
 fn drive_codex_query_agent(
     vault: &Path,
     question: &str,
     scope: &[String],
+    config: &AgentConfig,
 ) -> Result<QueryAnswer, String> {
     let prompt = format!(
         r#"You are answering a question from an Eva LLM Brain. The brain is a persistent, curated knowledge artifact; answer from it rather than general knowledge.
@@ -1878,7 +1982,7 @@ fn drive_codex_query_agent(
 Question: {question}"#,
         scope_instruction = working_set_instruction(scope),
     );
-    let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_query_schema()))?;
+    let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_query_schema()), config)?;
     let answer: QueryAnswer = serde_json::from_str(result.trim())
         .map_err(|_| "Codex returned an invalid cited answer; try again".to_string())?;
     if answer.answer.trim().is_empty() {
@@ -1887,7 +1991,11 @@ Question: {question}"#,
     Ok(answer)
 }
 
-fn drive_codex_health_agent(vault: &Path, profile: BrainProfile) -> Result<HealthReport, String> {
+fn drive_codex_health_agent(
+    vault: &Path,
+    profile: BrainProfile,
+    config: &AgentConfig,
+) -> Result<HealthReport, String> {
     let prompt = format!(r#"You are performing a read-only health check of an Eva LLM Brain.
 
 1. Read EVA.md and index.md first. Search and read local pages needed to assess the brain.
@@ -1899,7 +2007,7 @@ fn drive_codex_health_agent(vault: &Path, profile: BrainProfile) -> Result<Healt
         profile = profile.label(),
         maintenance_guidance = profile.maintenance_guidance(),
     );
-    let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_health_schema()))?;
+    let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_health_schema()), config)?;
     let report: HealthReport = serde_json::from_str(result.trim())
         .map_err(|_| "Codex returned an invalid health report; try again".to_string())?;
     if report.summary.trim().is_empty() {
@@ -1914,9 +2022,10 @@ fn drive_codex_profile_tool(
     tool: ProfileTool,
     options: &ProfileToolOptions,
     scope: &[String],
+    config: &AgentConfig,
 ) -> Result<ProfileToolResult, String> {
     let prompt = profile_tool_prompt(profile, tool, options, scope);
-    let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_profile_tool_schema()))?;
+    let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_profile_tool_schema()), config)?;
     let result: ProfileToolResult = serde_json::from_str(result.trim())
         .map_err(|_| "Codex returned an invalid tool result; try again".to_string())?;
     validate_profile_tool_result(result)
@@ -1926,57 +2035,57 @@ fn drive_agent(
     app: &AppHandle,
     job: &Job,
     worktree: &Path,
-    runtime: AgentRuntime,
     profile: BrainProfile,
+    config: &AgentConfig,
 ) -> Result<String, String> {
-    match runtime {
-        AgentRuntime::Codex => drive_codex_agent(app, job, worktree, profile),
-        AgentRuntime::Claude => drive_claude_agent(app, job, worktree, profile),
+    match config.runtime {
+        AgentRuntime::Codex => drive_codex_agent(app, job, worktree, profile, config),
+        AgentRuntime::Claude => drive_claude_agent(app, job, worktree, profile, config),
     }
 }
 
 fn drive_query_agent(
     vault: &Path,
     question: &str,
-    runtime: AgentRuntime,
     scope: &[String],
+    config: &AgentConfig,
 ) -> Result<QueryAnswer, String> {
-    match runtime {
-        AgentRuntime::Codex => drive_codex_query_agent(vault, question, scope),
-        AgentRuntime::Claude => drive_claude_query_agent(vault, question, scope),
+    match config.runtime {
+        AgentRuntime::Codex => drive_codex_query_agent(vault, question, scope, config),
+        AgentRuntime::Claude => drive_claude_query_agent(vault, question, scope, config),
     }
 }
 
 fn drive_health_agent(
     vault: &Path,
-    runtime: AgentRuntime,
     profile: BrainProfile,
+    config: &AgentConfig,
 ) -> Result<HealthReport, String> {
-    match runtime {
-        AgentRuntime::Codex => drive_codex_health_agent(vault, profile),
-        AgentRuntime::Claude => drive_claude_health_agent(vault, profile),
+    match config.runtime {
+        AgentRuntime::Codex => drive_codex_health_agent(vault, profile, config),
+        AgentRuntime::Claude => drive_claude_health_agent(vault, profile, config),
     }
 }
 
 fn drive_profile_tool(
     vault: &Path,
-    runtime: AgentRuntime,
     profile: BrainProfile,
     tool: ProfileTool,
     options: &ProfileToolOptions,
     scope: &[String],
+    config: &AgentConfig,
 ) -> Result<ProfileToolResult, String> {
-    match runtime {
-        AgentRuntime::Codex => drive_codex_profile_tool(vault, profile, tool, options, scope),
-        AgentRuntime::Claude => drive_claude_profile_tool(vault, profile, tool, options, scope),
+    match config.runtime {
+        AgentRuntime::Codex => drive_codex_profile_tool(vault, profile, tool, options, scope, config),
+        AgentRuntime::Claude => drive_claude_profile_tool(vault, profile, tool, options, scope, config),
     }
 }
 
 fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
     let vault = PathBuf::from(&job.vault);
-    let runtime = runtime_for_vault(&vault)?;
+    let config = agent_config_for_vault(&vault)?;
     let profile = brain_profile_for_vault(&vault)?;
-    ensure_agent_available(runtime)?;
+    ensure_agent_available(config.runtime)?;
     // Capture the exact commit the worktree starts from. A vault is not
     // required to name its default branch `main`; comparison against this
     // commit makes the review gate portable to any Git branch convention.
@@ -2005,7 +2114,7 @@ fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
         &["worktree", "add", &worktree.to_string_lossy(), &branch],
     )?;
 
-    let summary = match drive_agent(app, job, &worktree, runtime, profile) {
+    let summary = match drive_agent(app, job, &worktree, profile, &config) {
         Ok(s) => s,
         Err(e) => {
             cleanup(&vault, &branch, &worktree);
@@ -2401,10 +2510,12 @@ pub fn brain_create(
     name: String,
     language: String,
     agent: String,
+    model: String,
+    effort: String,
     purpose: String,
     profile: String,
 ) -> Result<String, String> {
-    let profile = vault_profile_with_brain_profile(&language, &agent, &purpose, &profile)?;
+    let profile = vault_profile_with_brain_profile(&language, &agent, &model, &effort, &purpose, &profile)?;
     let root = create_brain(&name, &profile)?;
     Ok(root.to_string_lossy().to_string())
 }
@@ -2433,10 +2544,12 @@ pub fn brain_settings_update(
     vault: String,
     language: String,
     agent: String,
+    model: String,
+    effort: String,
     purpose: String,
     profile: String,
 ) -> Result<BrainSettings, String> {
-    update_brain_settings(Path::new(&vault), &language, &agent, &purpose, &profile)
+    update_brain_settings(Path::new(&vault), &language, &agent, &model, &effort, &purpose, &profile)
 }
 
 #[tauri::command]
@@ -2449,9 +2562,9 @@ pub async fn query_run(
         let root = require_eva_brain(Path::new(&vault))?;
         let question = query_text(&question)?;
         let scope = normalize_working_set(scope.unwrap_or_default())?;
-        let runtime = runtime_for_vault(&root)?;
-        ensure_agent_available(runtime)?;
-        drive_query_agent(&root, question, runtime, &scope)
+        let config = agent_config_for_vault(&root)?;
+        ensure_agent_available(config.runtime)?;
+        drive_query_agent(&root, question, &scope, &config)
     })
     .await
     .map_err(|error| format!("query task: {error}"))?
@@ -2461,10 +2574,10 @@ pub async fn query_run(
 pub async fn health_check_run(vault: String) -> Result<HealthReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = require_eva_brain(Path::new(&vault))?;
-        let runtime = runtime_for_vault(&root)?;
-        ensure_agent_available(runtime)?;
+        let config = agent_config_for_vault(&root)?;
+        ensure_agent_available(config.runtime)?;
         let profile = brain_profile_for_vault(&root)?;
-        drive_health_agent(&root, runtime, profile)
+        drive_health_agent(&root, profile, &config)
     })
     .await
     .map_err(|error| format!("health check task: {error}"))?
@@ -2483,9 +2596,9 @@ pub async fn profile_tool_run(
         let tool = ProfileTool::from_choice(&tool)?;
         let options = normalize_profile_tool_options(tool, options)?;
         let scope = normalize_working_set(scope.unwrap_or_default())?;
-        let runtime = runtime_for_vault(&root)?;
-        ensure_agent_available(runtime)?;
-        drive_profile_tool(&root, runtime, profile, tool, &options, &scope)
+        let config = agent_config_for_vault(&root)?;
+        ensure_agent_available(config.runtime)?;
+        drive_profile_tool(&root, profile, tool, &options, &scope, &config)
     })
     .await
     .map_err(|error| format!("profile tool task: {error}"))?
@@ -2606,10 +2719,12 @@ mod tests {
 
     #[test]
     fn new_brain_profile_is_written_into_the_agent_schema() {
-        let profile = vault_profile_with_brain_profile("Español", "claude", "Investigación de mercado", "research").unwrap();
+        let profile = vault_profile_with_brain_profile("Español", "claude", "fable", "xhigh", "Investigación de mercado", "research").unwrap();
         let schema = eva_schema(Some(&profile));
         assert!(schema.contains("**Working language:** Español"));
         assert!(schema.contains("**Agent runtime:** Claude CLI"));
+        assert!(schema.contains("**AI model:** fable"));
+        assert!(schema.contains("**Reasoning effort:** xhigh"));
         assert!(schema.contains("**Purpose:** Investigación de mercado"));
         assert!(schema.contains("**Profile:** Research"));
     }
@@ -2619,12 +2734,16 @@ mod tests {
         let original = VaultProfile {
             language: "English".into(),
             agent: "Claude CLI".into(),
+            model: "sonnet".into(),
+            effort: "high".into(),
             purpose: "Original purpose".into(),
             brain_profile: BrainProfile::Blank,
         };
         let updated = VaultProfile {
             language: "Español".into(),
             agent: "Codex CLI".into(),
+            model: String::new(),
+            effort: "xhigh".into(),
             purpose: "Updated purpose".into(),
             brain_profile: BrainProfile::Research,
         };
@@ -2636,6 +2755,8 @@ mod tests {
         assert!(result.contains("# Custom brain rules"));
         assert!(result.contains("**Working language:** Español"));
         assert!(result.contains("**Agent runtime:** Codex CLI"));
+        assert!(result.contains("**AI model:** Runtime default"));
+        assert!(result.contains("**Reasoning effort:** xhigh"));
         assert!(result.contains("**Purpose:** Updated purpose"));
         assert!(result.contains("### Domain extension\n\nKeep this rule."));
         assert!(!result.contains("Original purpose"));
@@ -2724,7 +2845,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("eva-profile-bootstrap-{nonce}"));
         fs::create_dir(&root).unwrap();
         init_git_repo(&root).unwrap();
-        let profile = vault_profile_with_brain_profile("English", "codex", "Study a novel", "reading").unwrap();
+        let profile = vault_profile_with_brain_profile("English", "codex", "", "high", "Study a novel", "reading").unwrap();
 
         assert!(bootstrap_vault(&root, Some(&profile)).unwrap());
         let manifest = fs::read_to_string(root.join(BRAIN_MANIFEST_FILE)).unwrap();
@@ -2749,9 +2870,11 @@ mod tests {
         init_git_repo(&root).unwrap();
         bootstrap_vault(&root, None).unwrap();
 
-        let settings = update_brain_settings(&root, "Español", "codex", "Market research", "research").unwrap();
+        let settings = update_brain_settings(&root, "Español", "codex", "gpt-5", "xhigh", "Market research", "research").unwrap();
         assert_eq!(settings.language, "Español");
         assert_eq!(settings.agent, "codex");
+        assert_eq!(settings.model, "gpt-5");
+        assert_eq!(settings.effort, "xhigh");
         assert_eq!(settings.profile, "research");
         assert_eq!(settings.purpose, "Market research");
         assert!(git(&root, &["log", "-1", "--format=%s"])
@@ -2782,14 +2905,15 @@ mod tests {
     #[test]
     fn new_brains_can_choose_codex_or_claude() {
         assert_eq!(
-            vault_profile_with_brain_profile("English", "codex", "", "personal").unwrap().agent,
+            vault_profile_with_brain_profile("English", "codex", "", "", "", "personal").unwrap().agent,
             "Codex CLI"
         );
         assert_eq!(
-            vault_profile_with_brain_profile("English", "claude", "", "research").unwrap().agent,
+            vault_profile_with_brain_profile("English", "claude", "opus", "max", "", "research").unwrap().agent,
             "Claude CLI"
         );
-        assert!(vault_profile_with_brain_profile("English", "other", "", "research").is_err());
+        assert!(vault_profile_with_brain_profile("English", "other", "", "", "", "research").is_err());
+        assert!(vault_profile_with_brain_profile("English", "codex", "", "max", "", "research").is_err());
     }
 
     #[test]
