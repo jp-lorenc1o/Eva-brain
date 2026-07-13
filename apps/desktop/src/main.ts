@@ -2579,7 +2579,7 @@ function showQuery(): void {
 }
 
 function renderQueryAnswer(answer: QueryAnswer): void {
-  queryAnswerEl.textContent = answer.answer;
+  queryAnswerEl.replaceChildren(renderReaderBody(answer.answer));
   queryCitationsEl.innerHTML = '';
   if (answer.citations.length === 0) {
     const none = document.createElement('p');
@@ -2780,7 +2780,7 @@ function showProfileTools(): void {
 
 function renderProfileToolResult(result: ProfileToolResult): void {
   profileToolsResultTitleEl.textContent = result.title;
-  profileToolsContentEl.textContent = result.content;
+  profileToolsContentEl.replaceChildren(renderReaderBody(result.content));
   profileToolsCitationsEl.innerHTML = '';
   if (result.citations.length === 0) {
     const none = document.createElement('p');
