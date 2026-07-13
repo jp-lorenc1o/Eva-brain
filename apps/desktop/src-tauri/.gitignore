@@ -1,2 +1,4 @@
 target/
 gen/schemas/
+# Node tools staged by scripts/bundle-tools.mjs for `tauri build`
+resources/

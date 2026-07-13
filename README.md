@@ -36,6 +36,18 @@ npm test             # wiki-lib unit tests (vitest)
 npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ```
 
+**Node.js is a hard runtime dependency of the ingest gate**, not just of the
+build: the deterministic lint and the MCP navigation tools are Node scripts in
+`packages/eva-mcp`, and ingest or saving an analysis refuses to run without
+them. In dev they are found in the source checkout automatically; a bundled
+Eva.app carries them as an app resource, staged by
+`apps/desktop/scripts/bundle-tools.mjs` during `tauri build`. Set
+`EVA_TOOLS_DIR=/path/to/packages/eva-mcp` to override the location in either
+mode. Because apps launched from Finder do not inherit a terminal PATH, Eva
+looks for `node`, `claude`, and `codex` on PATH plus `/opt/homebrew/bin`,
+`/usr/local/bin`, and `~/.local/bin`, and reports a clear error when one is
+missing.
+
 ## First brain
 
 Choose **New brain** from the opening screen and name the knowledge project.

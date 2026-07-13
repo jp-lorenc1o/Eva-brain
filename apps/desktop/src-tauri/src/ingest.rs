@@ -2,12 +2,12 @@
 // headless agent subprocess, and the lint gate. The webview only invokes the
 // commands at the bottom and renders the events this module emits.
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const EVA_MD: &str = include_str!("../../../../schema/EVA.md");
@@ -756,10 +756,18 @@ fn agent_config_for_vault(vault: &Path) -> Result<AgentConfig, String> {
 }
 
 fn ensure_agent_available(runtime: AgentRuntime) -> Result<(), String> {
-    let output = Command::new(runtime.command())
+    let program = resolve_program(runtime.command())
+        .map_err(|error| format!("{} CLI: {error}", runtime.display_name()))?;
+    let output = Command::new(&program)
         .arg("--version")
         .output()
-        .map_err(|_| format!("{} CLI not found on PATH", runtime.display_name()))?;
+        .map_err(|error| {
+            format!(
+                "{} CLI at {} could not run: {error}",
+                runtime.display_name(),
+                program.display()
+            )
+        })?;
     if output.status.success() {
         Ok(())
     } else {
@@ -770,7 +778,17 @@ fn ensure_agent_available(runtime: AgentRuntime) -> Result<(), String> {
     }
 }
 
+/// Model/effort selection plus isolation parity with the Codex adapter's
+/// `--ignore-user-config --ignore-rules`: `--strict-mcp-config` keeps the
+/// person's globally configured MCP servers out of a private brain, and an
+/// empty `--setting-sources` skips user, project, and local settings — so
+/// user-scoped plugins and hooks do not participate either. Residual,
+/// documented gap: Claude Code still auto-discovers memory files (the user's
+/// `~/.claude/CLAUDE.md`); the only flag that disables that is `--bare`,
+/// which also restricts auth to API keys and would break Eva's use of the
+/// locally signed-in CLI.
 fn apply_claude_config(command: &mut Command, config: &AgentConfig) {
+    command.args(["--strict-mcp-config", "--setting-sources", ""]);
     if !config.model.is_empty() {
         command.args(["--model", &config.model]);
     }
@@ -1143,19 +1161,86 @@ fn import_brain(source: &Path) -> Result<BrainEntry, String> {
     imported
 }
 
+static BUNDLED_TOOLS_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Capture the packaged eva-mcp resource location once at startup. A bundled
+/// Eva.app carries the Node tools as an app resource (staged by
+/// `scripts/bundle-tools.mjs` at build time); in dev the resource is absent
+/// and `tools_dir` falls back to the source checkout.
+pub fn init_bundled_tools(app: &AppHandle) {
+    let dir = app.path().resource_dir().ok().and_then(|resources| {
+        ["resources/eva-mcp", "eva-mcp"]
+            .iter()
+            .map(|rel| resources.join(rel))
+            .find(|candidate| candidate.join("lint-cli.mjs").is_file())
+    });
+    let _ = BUNDLED_TOOLS_DIR.set(dir);
+}
+
 fn tools_dir() -> Result<PathBuf, String> {
     if let Ok(dir) = std::env::var("EVA_TOOLS_DIR") {
         return Ok(PathBuf::from(dir));
     }
+    if let Some(Some(dir)) = BUNDLED_TOOLS_DIR.get() {
+        return Ok(dir.clone());
+    }
+    // Dev fallback: the workspace checkout, relative to src-tauri.
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-    cwd.join("../../../packages/eva-mcp")
-        .canonicalize()
-        .map_err(|_| format!("cannot locate packages/eva-mcp from {} (set EVA_TOOLS_DIR)", cwd.display()))
+    cwd.join("../../../packages/eva-mcp").canonicalize().map_err(|_| {
+        format!(
+            "cannot locate Eva's Node tools (no bundled resource, and no source checkout near {}) — set EVA_TOOLS_DIR to a packages/eva-mcp directory",
+            cwd.display()
+        )
+    })
+}
+
+/// Find an executable the way a person's shell would, then fall back to the
+/// prefixes GUI-launched apps miss: Finder/launchd hand a bundled app a
+/// minimal PATH that omits Homebrew and per-user installs.
+fn resolve_program(name: &str) -> Result<PathBuf, String> {
+    static CACHE: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(hit) = cache.lock().unwrap().get(name) {
+        return Ok(hit.clone());
+    }
+
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    dirs.push(PathBuf::from("/opt/homebrew/bin"));
+    dirs.push(PathBuf::from("/usr/local/bin"));
+    if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(PathBuf::from(home).join(".local/bin"));
+    }
+
+    for dir in dirs {
+        let candidate = dir.join(name);
+        let executable = fs::metadata(&candidate)
+            .map(|meta| {
+                use std::os::unix::fs::PermissionsExt;
+                meta.is_file() && meta.permissions().mode() & 0o111 != 0
+            })
+            .unwrap_or(false);
+        if executable {
+            cache.lock().unwrap().insert(name.into(), candidate.clone());
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "{name} was not found — install it and make sure it is reachable from apps launched outside a terminal (Eva checks PATH plus /opt/homebrew/bin, /usr/local/bin, and ~/.local/bin)"
+    ))
+}
+
+/// Node.js is a hard runtime dependency of the ingest gate: the deterministic
+/// lint and the MCP navigation server are both Node scripts.
+fn node_program() -> Result<PathBuf, String> {
+    resolve_program("node")
+        .map_err(|error| format!("Node.js is required for Eva's lint gate and brain tools: {error}"))
 }
 
 fn lint(dir: &Path) -> Result<(usize, Vec<String>), String> {
     let cli = tools_dir()?.join("lint-cli.mjs");
-    let out = Command::new("node")
+    let out = Command::new(node_program()?)
         .arg(&cli)
         .arg(dir)
         .output()
@@ -1267,29 +1352,39 @@ fn cleanup(vault: &Path, branch: &str, worktree: &Path) {
     let _ = git(vault, &["branch", "-D", branch]);
 }
 
+/// The paths an agent must never change: the immutable source collection and
+/// Eva's own instruction and history files.
+const PROTECTED_PATHS: [&str; 6] = [
+    "raw",
+    BRAIN_MANIFEST_FILE,
+    "EVA.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "log.md",
+];
+
 /// Prompts are instructions, not an access boundary. Verify the immutable
 /// source collection and Eva's own instructions before an agent branch can
-/// ever be committed or shown for review.
-fn verify_agent_write_boundary(worktree: &Path) -> Result<(), String> {
-    let protected = git(
-        worktree,
-        &[
-            "status",
-            "--porcelain",
-            "--",
-            "raw",
-            BRAIN_MANIFEST_FILE,
-            "EVA.md",
-            "AGENTS.md",
-            "CLAUDE.md",
-            "log.md",
-        ],
-    )?;
-    if protected.trim().is_empty() {
-        Ok(())
-    } else {
-        Err("agent changed protected source or instruction files".into())
+/// ever be committed or shown for review. Two states are checked: the
+/// uncommitted working tree, and the committed range since `base_commit` —
+/// an agent that managed to run `git commit` itself would leave a clean
+/// status while its protected-file edits ride the branch into the merge.
+fn verify_agent_write_boundary(worktree: &Path, base_commit: &str) -> Result<(), String> {
+    let mut status_args = vec!["status", "--porcelain", "--"];
+    status_args.extend(PROTECTED_PATHS);
+    let uncommitted = git(worktree, &status_args)?;
+    if !uncommitted.trim().is_empty() {
+        return Err("agent changed protected source or instruction files".into());
     }
+
+    // In the worktree, HEAD is the agent branch that would be merged.
+    let mut diff_args = vec!["diff", "--no-renames", "--name-only", base_commit, "HEAD", "--"];
+    diff_args.extend(PROTECTED_PATHS);
+    let committed = git(worktree, &diff_args)?;
+    if !committed.trim().is_empty() {
+        return Err("agent committed changes to protected source or instruction files".into());
+    }
+    Ok(())
 }
 
 fn drive_claude_agent(
@@ -1300,10 +1395,11 @@ fn drive_claude_agent(
     config: &AgentConfig,
 ) -> Result<String, String> {
     let server = tools_dir()?.join("server.mjs");
+    let node = node_program()?;
     let cfg = serde_json::json!({
         "mcpServers": {
             "eva": {
-                "command": "node",
+                "command": node.to_string_lossy(),
                 "args": [server.to_string_lossy()],
                 "env": { "EVA_VAULT": worktree.to_string_lossy() }
             }
@@ -1328,7 +1424,7 @@ When you are done, reply with a one-paragraph summary of what you created and up
         ingest_guidance = profile.ingest_guidance(),
     );
 
-    let mut command = Command::new("claude");
+    let mut command = Command::new(resolve_program("claude")?);
     command
         .args([
             "-p",
@@ -1439,10 +1535,11 @@ fn drive_claude_query_agent(
     config: &AgentConfig,
 ) -> Result<QueryAnswer, String> {
     let server = tools_dir()?.join("server.mjs");
+    let node = node_program()?;
     let cfg = serde_json::json!({
         "mcpServers": {
             "eva": {
-                "command": "node",
+                "command": node.to_string_lossy(),
                 "args": [server.to_string_lossy()],
                 "env": { "EVA_VAULT": vault.to_string_lossy() }
             }
@@ -1471,7 +1568,7 @@ Question: {question}"#,
             scope_instruction = working_set_instruction(scope),
         );
 
-        let mut command = Command::new("claude");
+        let mut command = Command::new(resolve_program("claude")?);
         command
             .args([
                 "-p",
@@ -1545,10 +1642,11 @@ fn drive_claude_health_agent(
     config: &AgentConfig,
 ) -> Result<HealthReport, String> {
     let server = tools_dir()?.join("server.mjs");
+    let node = node_program()?;
     let cfg = serde_json::json!({
         "mcpServers": {
             "eva": {
-                "command": "node",
+                "command": node.to_string_lossy(),
                 "args": [server.to_string_lossy()],
                 "env": { "EVA_VAULT": vault.to_string_lossy() }
             }
@@ -1577,7 +1675,7 @@ fn drive_claude_health_agent(
             maintenance_guidance = profile.maintenance_guidance(),
         );
 
-        let mut command = Command::new("claude");
+        let mut command = Command::new(resolve_program("claude")?);
         command
             .args([
                 "-p",
@@ -1650,10 +1748,11 @@ fn drive_claude_profile_tool(
     config: &AgentConfig,
 ) -> Result<ProfileToolResult, String> {
     let server = tools_dir()?.join("server.mjs");
+    let node = node_program()?;
     let cfg = serde_json::json!({
         "mcpServers": {
             "eva": {
-                "command": "node",
+                "command": node.to_string_lossy(),
                 "args": [server.to_string_lossy()],
                 "env": { "EVA_VAULT": vault.to_string_lossy() }
             }
@@ -1668,7 +1767,7 @@ fn drive_claude_profile_tool(
 
     let result = (|| -> Result<ProfileToolResult, String> {
         let prompt = profile_tool_prompt(profile, tool, options, scope);
-        let mut command = Command::new("claude");
+        let mut command = Command::new(resolve_program("claude")?);
         command
             .args([
                 "-p",
@@ -1753,7 +1852,7 @@ fn run_codex_agent(
         if let (Some(schema), Some(path)) = (output_schema.as_ref(), schema_path.as_ref()) {
             fs::write(path, schema.to_string()).map_err(|e| format!("write Codex output schema: {e}"))?;
         }
-        let mut command = Command::new("codex");
+        let mut command = Command::new(resolve_program("codex")?);
         command.args([
             "exec",
             "--ephemeral",
@@ -2193,36 +2292,72 @@ fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
         }
     };
 
-    if let Err(error) = verify_agent_write_boundary(&worktree) {
-        cleanup(&vault, &branch, &worktree);
-        return Err(error);
+    match gate_agent_changes(
+        &vault,
+        &worktree,
+        &branch,
+        &base_commit,
+        &pre_issues,
+        &job.source_name,
+        summary,
+    ) {
+        Ok(outcome) => Ok(outcome),
+        Err(error) => {
+            cleanup(&vault, &branch, &worktree);
+            Err(error)
+        }
     }
+}
 
-    if git(&worktree, &["status", "--porcelain"])?.trim().is_empty() {
-        cleanup(&vault, &branch, &worktree);
+/// Paths removed between the ingest base and the agent branch. Rename
+/// detection is disabled deliberately: git's default reports a moved page as
+/// `R` (rename), not `D`, which would let a rename — a deletion of the
+/// original page id — slip past the review hold. With `--no-renames` a move
+/// is a delete plus an add, and the delete holds like any other.
+fn deleted_paths(vault: &Path, base_commit: &str, branch: &str) -> Result<Vec<String>, String> {
+    let name_status = git(
+        vault,
+        &["diff", "--no-renames", "--name-status", base_commit, branch],
+    )?;
+    Ok(name_status
+        .lines()
+        .filter(|line| line.starts_with('D'))
+        .filter_map(|line| line.split_whitespace().nth(1).map(String::from))
+        .collect())
+}
+
+/// Everything between the agent finishing and the merge decision: the
+/// protected-path boundary, the agent commit, the log entry, and the review
+/// gate. Any deletion, or any new lint issue, holds the branch for human
+/// review. Deletions are never auto-merged under any circumstance.
+fn gate_agent_changes(
+    vault: &Path,
+    worktree: &Path,
+    branch: &str,
+    base_commit: &str,
+    pre_issues: &[String],
+    source_name: &str,
+    summary: String,
+) -> Result<RunOutcome, String> {
+    verify_agent_write_boundary(worktree, base_commit)?;
+
+    if git(worktree, &["status", "--porcelain"])?.trim().is_empty() {
         return Err("agent made no changes to the vault".into());
     }
-    git(&worktree, &["add", "-A"])?;
+    git(worktree, &["add", "-A"])?;
     git(
-        &worktree,
-        &["commit", "-m", &format!("agent: ingest {}", job.source_name)],
+        worktree,
+        &["commit", "-m", &format!("agent: ingest {source_name}")],
     )?;
-    append_log(&worktree, "ingest", &job.source_name, &summary)?;
-    git(&worktree, &["add", "log.md"])?;
+    append_log(worktree, "ingest", source_name, &summary)?;
+    git(worktree, &["add", "log.md"])?;
     git(
-        &worktree,
-        &["commit", "-m", &format!("log: ingest {}", job.source_name)],
+        worktree,
+        &["commit", "-m", &format!("log: ingest {source_name}")],
     )?;
 
-    // The gate: any deletion, or any new lint issue, holds the branch for
-    // human review. Deletions are never auto-merged under any circumstance.
-    let name_status = git(&vault, &["diff", "--name-status", &base_commit, &branch])?;
-    let deletions: Vec<String> = name_status
-        .lines()
-        .filter(|l| l.starts_with('D'))
-        .map(|l| l.split_whitespace().nth(1).unwrap_or("").to_string())
-        .collect();
-    let (_, post_issues) = lint(&worktree)?;
+    let deletions = deleted_paths(vault, base_commit, branch)?;
+    let (_, post_issues) = lint(worktree)?;
     let new_issues: Vec<String> = post_issues
         .iter()
         .filter(|i| !pre_issues.contains(i))
@@ -2231,23 +2366,25 @@ fn run_job(app: &AppHandle, job: &Job) -> Result<RunOutcome, String> {
 
     if deletions.is_empty() && new_issues.is_empty() {
         git(
-            &vault,
+            vault,
             &[
                 "merge",
                 "--no-ff",
-                &branch,
+                branch,
                 "-m",
-                &format!("ingest: {} — {}", job.source_name, first_line(&summary)),
+                &format!("ingest: {source_name} — {}", first_line(&summary)),
             ],
         )?;
-        let (pages, _) = lint(&vault)?;
-        cleanup(&vault, &branch, &worktree);
+        let (pages, _) = lint(vault)?;
+        cleanup(vault, branch, worktree);
         Ok(RunOutcome::Merged { summary, pages })
     } else {
-        let patch = git(&vault, &["diff", &base_commit, &branch])?;
+        // Show the held diff the same way the gate counted it: a rename
+        // appears as its full delete and add, not a compact `R` hunk.
+        let patch = git(vault, &["diff", "--no-renames", base_commit, branch])?;
         Ok(RunOutcome::Held {
-            branch,
-            worktree,
+            branch: branch.to_string(),
+            worktree: worktree.to_path_buf(),
             patch,
             new_issues,
             deletions,
@@ -2449,19 +2586,14 @@ fn prepare_query_review(
                 &format!("query: save {}", first_line(question)),
             ],
         )?;
-        let name_status = git(vault, &["diff", "--name-status", &base_commit, &branch])?;
-        let deletions: Vec<String> = name_status
-            .lines()
-            .filter(|line| line.starts_with('D'))
-            .filter_map(|line| line.split_whitespace().nth(1).map(String::from))
-            .collect();
+        let deletions = deleted_paths(vault, &base_commit, &branch)?;
         let (_, post_issues) = lint(&worktree)?;
         let new_issues = post_issues
             .iter()
             .filter(|issue| !pre_issues.contains(issue))
             .cloned()
             .collect();
-        let patch = git(vault, &["diff", &base_commit, &branch])?;
+        let patch = git(vault, &["diff", "--no-renames", &base_commit, &branch])?;
         Ok(QueryReview {
             review_id,
             question: question.into(),
@@ -2755,7 +2887,7 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, cleanup, deleted_paths, eva_schema, gate_agent_changes, git, git_action_needs_eva_identity, init_git_repo, lint, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, RunOutcome, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD};
     use std::{
         fs,
         path::Path,
@@ -3070,6 +3202,43 @@ mod tests {
     }
 
     #[test]
+    fn renamed_pages_count_as_deletions_for_the_review_gate() {
+        // Regression test for the rename bypass: git's default rename
+        // detection reports `git mv old new` as R100, which produces zero
+        // `D` lines and used to slip past the deletions hold entirely.
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-rename-gate-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+        fs::write(
+            root.join("old-page.md"),
+            "---\ntitle: Old page\ntype: concept\n---\n\nEnough stable body content for git to detect a rename.\n",
+        )
+        .unwrap();
+        git(&root, &["add", "-A"]).unwrap();
+        git(&root, &["commit", "-m", "base"]).unwrap();
+        let base = git(&root, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+        git(&root, &["checkout", "-b", "agent"]).unwrap();
+        git(&root, &["mv", "old-page.md", "new-page.md"]).unwrap();
+        git(&root, &["commit", "-m", "rename"]).unwrap();
+
+        // Sanity: this really is the bypass scenario — with rename detection
+        // left on, git reports no `D` line for the move.
+        let detected = git(&root, &["diff", "--name-status", &base, "agent"]).unwrap();
+        assert!(detected.contains("R100"), "expected git to see a rename: {detected}");
+
+        assert_eq!(
+            deleted_paths(&root, &base, "agent").unwrap(),
+            vec!["old-page.md".to_string()],
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn agent_changes_to_raw_sources_are_rejected_before_review() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3078,10 +3247,303 @@ mod tests {
         let root = std::env::temp_dir().join(format!("eva-write-boundary-{nonce}"));
         fs::create_dir(&root).unwrap();
         init_git_repo(&root).unwrap();
+        git(&root, &["commit", "--allow-empty", "-m", "base"]).unwrap();
+        let base = git(&root, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
         fs::create_dir(root.join("raw")).unwrap();
         fs::write(root.join("raw/source.md"), "changed by agent").unwrap();
 
-        assert!(verify_agent_write_boundary(&root).is_err());
+        assert!(verify_agent_write_boundary(&root, &base).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn committed_changes_to_each_protected_path_are_rejected_before_review() {
+        // Regression test for the committed-state bypass: an agent that ran
+        // `git commit` itself would leave a clean `git status`, which was the
+        // only state the boundary used to inspect. Every protected path must
+        // be caught in the committed range, not just the working tree.
+        for protected in [
+            "raw/source.txt",
+            BRAIN_MANIFEST_FILE,
+            "EVA.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "log.md",
+        ] {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!("eva-committed-boundary-{nonce}"));
+            fs::create_dir(&root).unwrap();
+            init_git_repo(&root).unwrap();
+            bootstrap_vault(&root, None).unwrap();
+            fs::write(root.join("raw/source.txt"), "original source").unwrap();
+            git(&root, &["add", "-A"]).unwrap();
+            git(&root, &["commit", "-m", "base"]).unwrap();
+            let base = git(&root, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+            fs::write(root.join(protected), "tampered by agent").unwrap();
+            git(&root, &["add", "-A"]).unwrap();
+            git(&root, &["commit", "-m", "agent tamper"]).unwrap();
+            assert!(
+                git(&root, &["status", "--porcelain"]).unwrap().trim().is_empty(),
+                "{protected}: the tamper must be fully committed for this test to mean anything",
+            );
+
+            assert!(
+                verify_agent_write_boundary(&root, &base).is_err(),
+                "{protected}: a committed change to a protected path must block review",
+            );
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    /// A bootstrapped scratch brain: its own git root with the standard
+    /// infrastructure committed, ready for gate tests.
+    fn scratch_brain(tag: &str) -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-{tag}-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+        bootstrap_vault(&root, None).unwrap();
+        root
+    }
+
+    /// Commit a typed page and link it from index.md so the baseline lints clean.
+    fn commit_linked_page(root: &Path, id: &str, title: &str) {
+        let path = root.join(format!("{id}.md"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            format!("---\ntitle: {title}\ntype: concept\n---\n\nDurable content about {title}.\n"),
+        )
+        .unwrap();
+        let index = root.join("index.md");
+        let content = format!("{}\n- [[{id}]]\n", fs::read_to_string(&index).unwrap());
+        fs::write(&index, content).unwrap();
+        git(root, &["add", "-A"]).unwrap();
+        git(root, &["commit", "-m", &format!("page: {id}")]).unwrap();
+    }
+
+    /// Snapshot the pre-ingest state and stand up the agent branch/worktree
+    /// exactly the way run_job does.
+    fn agent_worktree(root: &Path) -> (String, std::path::PathBuf, String, Vec<String>) {
+        let (_, pre_issues) = lint(root).unwrap();
+        let base = git(root, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let branch = format!("ingest/test-{nonce}");
+        let worktree = std::env::temp_dir()
+            .join("eva-test-worktrees")
+            .join(format!("wt-{nonce}"));
+        fs::create_dir_all(worktree.parent().unwrap()).unwrap();
+        git(root, &["branch", &branch]).unwrap();
+        git(root, &["worktree", "add", &worktree.to_string_lossy(), &branch]).unwrap();
+        (branch, worktree, base, pre_issues)
+    }
+
+    #[test]
+    fn clean_ingests_auto_merge_through_the_gate() {
+        let root = scratch_brain("gate-clean");
+        let (branch, worktree, base, pre_issues) = agent_worktree(&root);
+
+        fs::create_dir_all(worktree.join("concepts")).unwrap();
+        fs::write(
+            worktree.join("concepts/compounding.md"),
+            "---\ntitle: Compounding\ntype: concept\n---\n\nReturns feed on themselves.\n",
+        )
+        .unwrap();
+        let index = worktree.join("index.md");
+        let content = format!(
+            "{}\n- [[concepts/compounding]]\n",
+            fs::read_to_string(&index).unwrap()
+        );
+        fs::write(&index, content).unwrap();
+
+        let outcome = gate_agent_changes(
+            &root,
+            &worktree,
+            &branch,
+            &base,
+            &pre_issues,
+            "letter.txt",
+            "Added compounding.".into(),
+        )
+        .unwrap();
+        assert!(matches!(outcome, RunOutcome::Merged { .. }));
+        assert!(root.join("concepts/compounding.md").exists());
+        assert!(git(&root, &["log", "-1", "--format=%s"])
+            .unwrap()
+            .contains("ingest: letter.txt"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deletions_hold_the_ingest_branch_for_review() {
+        let root = scratch_brain("gate-delete");
+        commit_linked_page(&root, "concepts/topic", "Topic");
+        let (branch, worktree, base, pre_issues) = agent_worktree(&root);
+
+        fs::remove_file(worktree.join("concepts/topic.md")).unwrap();
+        let index = worktree.join("index.md");
+        let content: String = fs::read_to_string(&index)
+            .unwrap()
+            .lines()
+            .filter(|line| !line.contains("concepts/topic"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&index, content + "\n").unwrap();
+
+        let outcome = gate_agent_changes(
+            &root,
+            &worktree,
+            &branch,
+            &base,
+            &pre_issues,
+            "letter.txt",
+            "Removed a page.".into(),
+        )
+        .unwrap();
+        match &outcome {
+            RunOutcome::Held {
+                deletions,
+                new_issues,
+                ..
+            } => {
+                assert_eq!(deletions, &vec!["concepts/topic.md".to_string()]);
+                assert!(
+                    new_issues.is_empty(),
+                    "the hold must come from the deletion alone: {new_issues:?}"
+                );
+            }
+            RunOutcome::Merged { .. } => panic!("a deletion must never auto-merge"),
+        }
+        cleanup(&root, &branch, &worktree);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn new_lint_issues_hold_the_ingest_branch_for_review() {
+        let root = scratch_brain("gate-lint");
+        let (branch, worktree, base, pre_issues) = agent_worktree(&root);
+
+        // Valid frontmatter, but no inbound link anywhere: a new orphan.
+        fs::create_dir_all(worktree.join("concepts")).unwrap();
+        fs::write(
+            worktree.join("concepts/stray.md"),
+            "---\ntitle: Stray\ntype: concept\n---\n\nNothing links here.\n",
+        )
+        .unwrap();
+
+        let outcome = gate_agent_changes(
+            &root,
+            &worktree,
+            &branch,
+            &base,
+            &pre_issues,
+            "letter.txt",
+            "Added a stray page.".into(),
+        )
+        .unwrap();
+        match &outcome {
+            RunOutcome::Held {
+                deletions,
+                new_issues,
+                ..
+            } => {
+                assert!(deletions.is_empty());
+                assert!(
+                    new_issues
+                        .iter()
+                        .any(|issue| issue.contains("orphan") && issue.contains("concepts/stray")),
+                    "expected the new orphan to hold the branch: {new_issues:?}"
+                );
+            }
+            RunOutcome::Merged { .. } => panic!("a new lint issue must never auto-merge"),
+        }
+        cleanup(&root, &branch, &worktree);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn renamed_pages_hold_the_ingest_branch_for_review() {
+        // End-to-end regression for the rename bypass: identical content
+        // under a new page id, every inbound link updated — no new lint
+        // issue, and before the fix no detected deletion either, so this
+        // exact change auto-merged with no human review.
+        let root = scratch_brain("gate-rename");
+        commit_linked_page(&root, "concepts/alpha", "Alpha");
+        let (branch, worktree, base, pre_issues) = agent_worktree(&root);
+
+        fs::rename(
+            worktree.join("concepts/alpha.md"),
+            worktree.join("concepts/beta.md"),
+        )
+        .unwrap();
+        let index = worktree.join("index.md");
+        let content = fs::read_to_string(&index)
+            .unwrap()
+            .replace("concepts/alpha", "concepts/beta");
+        fs::write(&index, content).unwrap();
+
+        let outcome = gate_agent_changes(
+            &root,
+            &worktree,
+            &branch,
+            &base,
+            &pre_issues,
+            "letter.txt",
+            "Moved a page.".into(),
+        )
+        .unwrap();
+        match &outcome {
+            RunOutcome::Held {
+                deletions,
+                new_issues,
+                ..
+            } => {
+                assert_eq!(deletions, &vec!["concepts/alpha.md".to_string()]);
+                assert!(
+                    new_issues.is_empty(),
+                    "the hold must come from the rename's deletion alone: {new_issues:?}"
+                );
+            }
+            RunOutcome::Merged { .. } => {
+                panic!("a renamed page deletes its old id and must be reviewed")
+            }
+        }
+        cleanup(&root, &branch, &worktree);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn committed_wiki_page_changes_pass_the_write_boundary() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-boundary-wiki-ok-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+        bootstrap_vault(&root, None).unwrap();
+        let base = git(&root, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+        fs::create_dir_all(root.join("concepts")).unwrap();
+        fs::write(
+            root.join("concepts/compounding.md"),
+            "---\ntitle: Compounding\ntype: concept\n---\n\nA normal wiki edit.\n",
+        )
+        .unwrap();
+        git(&root, &["add", "-A"]).unwrap();
+        git(&root, &["commit", "-m", "agent page"]).unwrap();
+
+        assert!(verify_agent_write_boundary(&root, &base).is_ok());
         fs::remove_dir_all(root).unwrap();
     }
 }
@@ -3095,6 +3557,10 @@ pub fn ingest_enqueue(
 ) -> Result<usize, String> {
     let root = require_eva_brain(Path::new(&vault))?;
     ensure_agent_available(runtime_for_vault(&root)?)?;
+    // Fail before any source is copied or committed: the lint gate cannot run
+    // without Node, and a half-enqueued ingest is worse than a clear error.
+    node_program()?;
+    tools_dir()?;
 
     let raw = root.join("raw");
     fs::create_dir_all(&raw).map_err(|e| e.to_string())?;

@@ -93,6 +93,17 @@ Codex uses its sandboxed local filesystem tools. Both receive the same brain
 path, `EVA.md` contract, and worktree/review guarantees. Future runtimes must
 preserve those guarantees and must not change the on-disk format.
 
+Both runtimes are isolated from the person's own agent configuration so that
+unrelated global tools, rules, and servers never participate in a private
+brain: Codex runs with `--ephemeral --ignore-user-config --ignore-rules`, and
+Claude runs with `--strict-mcp-config` (only Eva's MCP server) and an empty
+`--setting-sources` (no user, project, or local settings, which also keeps
+user-scoped plugins and hooks out). One asymmetry remains: Claude Code always
+auto-discovers memory files, so a user-level `~/.claude/CLAUDE.md` is still
+read during Claude runs. The only flag that disables memory discovery also
+disables the locally signed-in CLI auth Eva depends on, so Eva accepts this
+gap and documents it here instead of hiding it.
+
 ## Privacy boundary
 
 Eva can commit the selected original documents into `raw/` as local history.

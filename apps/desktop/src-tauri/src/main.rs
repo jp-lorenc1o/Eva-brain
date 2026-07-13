@@ -9,6 +9,12 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // A bundled Eva.app carries the Node lint/MCP tools as a resource;
+            // resolve that location once so ingest never depends on the cwd.
+            ingest::init_bundled_tools(app.handle());
+            Ok(())
+        })
         .manage(ingest::SharedState::default())
         .manage(ingest::SharedQueryState::default())
         .invoke_handler(tauri::generate_handler![
