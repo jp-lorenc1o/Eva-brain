@@ -19,6 +19,7 @@ const LOG_MD: &str = include_str!("../../../../templates/vault/log.md");
 const BRAIN_MANIFEST_FILE: &str = "eva.json";
 const BRAIN_FORMAT: &str = "eva-brain";
 const BRAIN_STANDARD_VERSION: u64 = 1;
+const EVA_GITIGNORE_ENTRY: &str = ".DS_Store";
 
 struct VaultProfile {
     language: String,
@@ -945,11 +946,43 @@ fn update_brain_settings(
     brain_settings(&root)
 }
 
+/// Keep operating-system metadata out of the brain history without touching
+/// any of the person's own ignore rules.
+fn ensure_eva_gitignore(root: &Path) -> Result<bool, String> {
+    let path = root.join(".gitignore");
+    let existing = if path.exists() {
+        fs::read_to_string(&path).map_err(|e| format!("read .gitignore: {e}"))?
+    } else {
+        String::new()
+    };
+    if existing
+        .lines()
+        .map(str::trim)
+        .any(|line| line == EVA_GITIGNORE_ENTRY || line == "**/.DS_Store")
+    {
+        return Ok(false);
+    }
+    let separator = if existing.is_empty() || existing.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    fs::write(
+        path,
+        format!("{existing}{separator}# Local macOS Finder metadata\n{EVA_GITIGNORE_ENTRY}\n"),
+    )
+    .map_err(|e| format!("write .gitignore: {e}"))?;
+    Ok(true)
+}
+
 /// Write only missing Eva infrastructure, then commit exactly those files.
 /// Keeping this separate from the Tauri command lets both a newly-created
 /// vault and a pre-existing Git-root vault receive the same V1 baseline.
 fn bootstrap_vault(root: &Path, profile: Option<&VaultProfile>) -> Result<bool, String> {
     let mut staged: Vec<&str> = vec!["add"];
+    if ensure_eva_gitignore(root)? {
+        staged.push(".gitignore");
+    }
     let manifest_path = root.join(BRAIN_MANIFEST_FILE);
     if manifest_path.exists() {
         verify_brain_standard(root)?;
@@ -2841,6 +2874,25 @@ mod tests {
 
         assert!(bootstrap_vault(&root, None).unwrap());
         assert!(verify_brain_standard(&root).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bootstrap_ignores_macos_finder_metadata() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("eva-gitignore-{nonce}"));
+        fs::create_dir(&root).unwrap();
+        init_git_repo(&root).unwrap();
+
+        bootstrap_vault(&root, None).unwrap();
+        assert!(fs::read_to_string(root.join(".gitignore"))
+            .unwrap()
+            .contains(".DS_Store"));
+        fs::write(root.join(".DS_Store"), "Finder metadata").unwrap();
+        assert!(git(&root, &["status", "--porcelain"]).unwrap().trim().is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 
