@@ -166,6 +166,21 @@ interface SimNode extends SimulationNodeDatum {
   id: string;
   title: string;
   type: string | null;
+  /** A structural section in the progressive map, rather than a Markdown page. */
+  kind?: 'page' | 'cluster';
+  groupId?: string;
+  pageIds?: string[];
+}
+
+interface IndexCluster {
+  id: string;
+  label: string;
+  pageIds: string[];
+  type: string | null;
+}
+
+interface MapLink extends SimulationLinkDatum<SimNode> {
+  kind: 'semantic' | 'structure';
 }
 
 interface GraphCamera {
@@ -316,17 +331,20 @@ const newVaultErrorEl = document.getElementById('new-vault-error') as HTMLElemen
 const newVaultCreateEl = document.getElementById('new-vault-create') as HTMLButtonElement;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const GRAPH_LAYOUT_STORAGE_PREFIX = 'eva:graph-layout:v1:';
+// Version two deliberately starts fresh: the former saved layout represented
+// a single all-pages force graph and is not meaningful for the atlas below.
+const GRAPH_LAYOUT_STORAGE_PREFIX = 'eva:graph-layout:v2:';
 const GRAPH_MIN_ZOOM = 0.3;
 const GRAPH_MAX_ZOOM = 2.5;
 const INFRA_FILES = new Set(['log.md', 'eva.md', 'agents.md', 'claude.md']);
+const PROGRESSIVE_DISCLOSURE_THRESHOLD = 32;
 
 let vault: Vault | null = null;
 let wholeGraph: Graph | null = null;
 let issues: LintIssue[] = [];
 let logRaw: string | null = null;
 let currentVault: string | null = null;
-let simulation: Simulation<SimNode, SimulationLinkDatum<SimNode>> | null = null;
+let simulation: Simulation<SimNode, MapLink> | null = null;
 let simNodes: SimNode[] = [];
 let refreshPositions: (() => void) | null = null;
 let centerX = forceX<SimNode>(0);
@@ -347,6 +365,14 @@ let latestProfileTool: { tool: ProfileToolId; title: string; answer: QueryAnswer
 let profileToolRunning = false;
 let selectedProfileTool: ProfileToolId | null = null;
 let selectedPageId: string | null = null;
+let indexClusters: IndexCluster[] = [];
+let pageClusterIds = new Map<string, string>();
+let expandedClusterIds = new Set<string>();
+let contextualPageIds = new Set<string>();
+let mapFilterIds: Set<string> | null = null;
+let restoreGraphLayoutOnNextRender = false;
+let centerGraphOnNextRender = true;
+let jumpToPageOnNextRender: string | null = null;
 let exploreQuery = '';
 let exploreVisibleTypes = new Set<string>();
 let exploreConnectionsOnly = false;
@@ -543,9 +569,12 @@ function applyInterfaceLanguage(): void {
   updateBrainManagerAgentPreferences();
   if (!currentVault) vaultPathEl.textContent = t('nav.noBrain');
   const selectedId = svg.querySelector<SVGGElement>('.node.selected')?.dataset.id;
-  if (vault) renderLegend(exploredPages());
+  if (vault) {
+    renderLegend(exploredPages());
+    renderGraph();
+  }
   if (vault) renderExplorePanel();
-  if (selectedId) select(selectedId);
+  if (selectedId) select(selectedId, { expand: false });
   refreshRecentViews();
   if (!brainLibraryEl.hidden) void loadBrainLibrary();
   if (!brainManagerEl.hidden) renderBrainManager();
@@ -605,7 +634,7 @@ function typeClusterTargets(nodes: SimNode[], center: { x: number; y: number }):
   return targets;
 }
 
-function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): void {
+function seedFlatGraphNodes(nodes: SimNode[], center: { x: number; y: number }): void {
   const home = nodes.find(isHomeNode);
   if (home) {
     home.x = center.x;
@@ -633,6 +662,200 @@ function seedGraphNodes(nodes: SimNode[], center: { x: number; y: number }): voi
       node.vy = 0;
     }
   }
+}
+
+function mapUsesProgressiveDisclosure(): boolean {
+  return Boolean(vault && vault.pages.length > PROGRESSIVE_DISCLOSURE_THRESHOLD);
+}
+
+function clusterIdFor(label: string, ordinal: number): string {
+  const slug = label
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'section';
+  return `cluster:${slug}-${ordinal}`;
+}
+
+function clusterType(pageIds: string[], nextVault: Vault): string | null {
+  const types = new Set(pageIds.map((id) => nextVault.byId.get(id)?.type ?? null));
+  return types.size === 1 ? [...types][0] : null;
+}
+
+/**
+ * The index is a human-authored outline, so it is the most useful map
+ * hierarchy available without adding a new data model. H2/H3 headings become
+ * map sections; any unlisted pages get a quiet type-based catch-all.
+ */
+function buildIndexClusters(nextVault: Vault): void {
+  pageClusterIds = new Map<string, string>();
+  const grouped = new Map<string, string[]>();
+  const index = nextVault.pages.find(isHomeNode);
+  let section = '';
+  let subsection = '';
+
+  if (index) {
+    for (const line of index.body.split(/\r?\n/)) {
+      const heading = /^(#{2,3})\s+(.+?)\s*#*\s*$/.exec(line);
+      if (heading) {
+        const title = heading[2].replace(/[`*_]/g, '').trim();
+        if (heading[1].length === 2) {
+          section = title;
+          subsection = '';
+        } else {
+          subsection = title;
+        }
+      }
+      for (const match of line.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+        const page = resolveLink(nextVault, match[1].trim());
+        if (!page || page.id === index.id) continue;
+        const label = subsection || section || pageTypeLabel(page.type);
+        const members = grouped.get(label) ?? [];
+        if (!members.includes(page.id)) members.push(page.id);
+        grouped.set(label, members);
+      }
+    }
+  }
+
+  const assigned = new Set([...grouped.values()].flat());
+  for (const page of nextVault.pages) {
+    if (page.id === index?.id || assigned.has(page.id)) continue;
+    const label = `${pageTypeLabel(page.type)}`;
+    const members = grouped.get(label) ?? [];
+    members.push(page.id);
+    grouped.set(label, members);
+  }
+
+  indexClusters = [...grouped.entries()]
+    .filter(([, pageIds]) => pageIds.length > 0)
+    .map(([label, pageIds], ordinal) => ({
+      id: clusterIdFor(label, ordinal),
+      label,
+      pageIds,
+      type: clusterType(pageIds, nextVault),
+    }));
+  for (const cluster of indexClusters) {
+    for (const pageId of cluster.pageIds) pageClusterIds.set(pageId, cluster.id);
+  }
+}
+
+function pageIsInActiveMap(id: string): boolean {
+  return mapFilterIds === null || mapFilterIds.has(id);
+}
+
+function buildRenderableGraph(): { nodes: SimNode[]; links: MapLink[] } {
+  if (!vault || !wholeGraph) return { nodes: [], links: [] };
+  const allowed = new Set(vault.pages.filter((page) => pageIsInActiveMap(page.id)).map((page) => page.id));
+  const home = vault.pages.find(isHomeNode) ?? vault.pages[0];
+  if (home) allowed.add(home.id);
+
+  if (!mapUsesProgressiveDisclosure()) {
+    return {
+      nodes: wholeGraph.nodes
+        .filter((node) => allowed.has(node.id))
+        .map((node) => ({ ...node, kind: 'page' as const, groupId: pageClusterIds.get(node.id) })),
+      links: wholeGraph.edges
+        .filter((edge) => allowed.has(edge.source) && allowed.has(edge.target))
+        .map((edge) => ({ source: edge.source, target: edge.target, kind: 'semantic' })),
+    };
+  }
+
+  const visiblePageIds = new Set<string>();
+  if (home) visiblePageIds.add(home.id);
+  // A direct page jump is always honoured visually, even if a currently-open
+  // Explore filter would otherwise exclude it. Its surrounding filter remains
+  // intact; the map simply gives the person a way back from the result.
+  for (const id of contextualPageIds) visiblePageIds.add(id);
+  for (const clusterId of expandedClusterIds) {
+    const cluster = indexClusters.find((candidate) => candidate.id === clusterId);
+    for (const id of cluster?.pageIds ?? []) if (allowed.has(id)) visiblePageIds.add(id);
+  }
+
+  const clusters = indexClusters.filter((cluster) => cluster.pageIds.some((id) => allowed.has(id)));
+  const nodes: SimNode[] = [
+    ...vault.pages
+      .filter((page) => visiblePageIds.has(page.id))
+      .map((page) => ({ ...page, kind: 'page' as const, groupId: pageClusterIds.get(page.id) })),
+    ...clusters.map((cluster) => ({
+      id: cluster.id,
+      title: cluster.label,
+      type: cluster.type,
+      kind: 'cluster' as const,
+      groupId: cluster.id,
+      pageIds: cluster.pageIds.filter((id) => allowed.has(id)),
+    })),
+  ];
+  const links: MapLink[] = [];
+  for (const cluster of clusters) {
+    if (home) links.push({ source: home.id, target: cluster.id, kind: 'structure' });
+    if (!expandedClusterIds.has(cluster.id)) continue;
+    for (const pageId of cluster.pageIds) {
+      if (visiblePageIds.has(pageId)) links.push({ source: cluster.id, target: pageId, kind: 'structure' });
+    }
+  }
+  for (const edge of wholeGraph.edges) {
+    if (edge.source === home?.id || edge.target === home?.id) continue;
+    if (visiblePageIds.has(edge.source) && visiblePageIds.has(edge.target)) {
+      links.push({ source: edge.source, target: edge.target, kind: 'semantic' });
+    }
+  }
+  return { nodes, links };
+}
+
+function progressiveClusterTargets(nodes: SimNode[], center: { x: number; y: number }): Map<string, { x: number; y: number }> {
+  const clusters = nodes.filter((node) => node.kind === 'cluster');
+  const targets = new Map<string, { x: number; y: number }>();
+  const orbit = Math.max(300, 290 + clusters.length * 20);
+  for (const [index, cluster] of clusters.entries()) {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(clusters.length, 1);
+    targets.set(cluster.id, {
+      x: center.x + orbit * Math.cos(angle),
+      y: center.y + orbit * Math.sin(angle),
+    });
+  }
+  return targets;
+}
+
+function seedRenderableGraphNodes(nodes: SimNode[], center: { x: number; y: number }): Map<string, { x: number; y: number }> {
+  if (!nodes.some((node) => node.kind === 'cluster')) {
+    seedFlatGraphNodes(nodes, center);
+    return typeClusterTargets(nodes, center);
+  }
+  const targets = progressiveClusterTargets(nodes, center);
+  const home = nodes.find(isHomeNode);
+  if (home) {
+    home.x = center.x;
+    home.y = center.y;
+    home.vx = 0;
+    home.vy = 0;
+  }
+  const pageGroups = new Map<string, SimNode[]>();
+  for (const node of nodes) {
+    if (node === home || node.kind === 'cluster') continue;
+    const group = pageGroups.get(node.groupId ?? 'context') ?? [];
+    group.push(node);
+    pageGroups.set(node.groupId ?? 'context', group);
+  }
+  for (const [groupId, pages] of pageGroups) {
+    const target = targets.get(groupId) ?? center;
+    for (const [index, node] of pages.entries()) {
+      const radius = 76 + 42 * Math.sqrt(index + 0.5);
+      const angle = index * GOLDEN_ANGLE + Math.PI / 5;
+      node.x = target.x + radius * Math.cos(angle);
+      node.y = target.y + radius * Math.sin(angle);
+      node.vx = 0;
+      node.vy = 0;
+    }
+  }
+  for (const node of nodes.filter((candidate) => candidate.kind === 'cluster')) {
+    const target = targets.get(node.id) ?? center;
+    node.x = target.x;
+    node.y = target.y;
+    node.vx = 0;
+    node.vy = 0;
+  }
+  return targets;
 }
 
 function graphStorageKey(): string | null {
@@ -840,29 +1063,18 @@ function updateGraphNavigation(): void {
 }
 
 function reorganizeGraph(): void {
-  if (!simulation || simNodes.length === 0) return;
-  const center = pageCenter();
-  for (const node of simNodes) {
-    node.fx = null;
-    node.fy = null;
-    node.vx = 0;
-    node.vy = 0;
-  }
-  svg.querySelectorAll('.node.pinned').forEach((node) => node.classList.remove('pinned'));
-  seedGraphNodes(simNodes, center);
-  homeCenterX.x((node) => (isHomeNode(node) ? center.x : 0));
-  homeCenterY.y((node) => (isHomeNode(node) ? center.y : 0));
-  centerGraphCamera();
-
-  if (reducedMotion) {
-    simulation.stop();
-    simulation.alpha(1).tick(420);
-    refreshPositions?.();
-    lockGraphLayout();
-  } else {
-    lockGraphWhenSettled = true;
-    simulation.alpha(LAYOUT_REORGANIZE_ALPHA).alphaTarget(0).restart();
-  }
+  if (!vault || !wholeGraph) return;
+  // Reorganize now means "return to the atlas", not "ask a 117-node force
+  // simulation to find a different knot". The current Explore filters remain
+  // in force, so it is also a useful way to reset a filtered investigation.
+  expandedClusterIds.clear();
+  contextualPageIds.clear();
+  selectedPageId = null;
+  detailEl.hidden = true;
+  centerGraphOnNextRender = true;
+  renderGraph();
+  renderExplorePanel();
+  updateExclusions();
   setIngestStatus(ui('map.reorganized'), false);
 }
 
@@ -1397,6 +1609,10 @@ async function openVault(root: string): Promise<void> {
   vault = buildVault(files);
   wholeGraph = buildGraph(vault);
   resetExploreState();
+  buildIndexClusters(vault);
+  restoreGraphLayoutOnNextRender = true;
+  centerGraphOnNextRender = true;
+  jumpToPageOnNextRender = null;
   issues = lintVault(vault);
   saveRecents([root, ...getRecents().filter((p) => p !== root)]);
   refreshRecentViews();
@@ -1407,7 +1623,7 @@ async function openVault(root: string): Promise<void> {
   graphNavigationEl.hidden = false;
   closeSidePanels();
   renderLegend();
-  renderGraph(wholeGraph);
+  renderGraph();
   renderExplorePanel();
   updateExclusions();
 }
@@ -1444,6 +1660,9 @@ function resetExploreState(): void {
   exploreConnectionsOnly = false;
   exploreScopeEnabled = false;
   selectedPageId = null;
+  expandedClusterIds = new Set<string>();
+  contextualPageIds = new Set<string>();
+  mapFilterIds = null;
   exploreSearchEl.value = '';
   exploreScopeEl.checked = false;
 }
@@ -1475,15 +1694,6 @@ function exploredPages(): Page[] {
     pages = pages.filter((page) => connected.has(page.id));
   }
   return pages;
-}
-
-function exploredGraph(pages = exploredPages()): Graph {
-  if (!wholeGraph) return { nodes: [], edges: [] };
-  const ids = new Set(pages.map((page) => page.id));
-  return {
-    nodes: wholeGraph.nodes.filter((node) => ids.has(node.id)),
-    edges: wholeGraph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
-  };
 }
 
 function activeWorkingSetPageIds(): string[] {
@@ -1547,7 +1757,7 @@ function renderExplorePanel(): void {
       meta.className = 'explore-result-meta';
       meta.textContent = `${pageTypeLabel(page.type)} · ${page.id}`;
       result.append(title, meta);
-      result.addEventListener('click', () => select(page.id));
+      result.addEventListener('click', () => jumpToPage(page.id));
       exploreResultsEl.appendChild(result);
     }
   }
@@ -1561,14 +1771,17 @@ function applyExploreFilters(): void {
   const pages = exploredPages();
   if (pages.length === 0) exploreScopeEnabled = false;
   const visibleIds = new Set(pages.map((page) => page.id));
+  // Filters shape the structural atlas too. Even "all Concepts" remains a
+  // handful of section clusters instead of becoming an 80-node knot.
+  mapFilterIds = exploreHasNarrowing() ? visibleIds : null;
   const selected = selectedPageId;
   if (selected && !visibleIds.has(selected)) {
     selectedPageId = null;
     detailEl.hidden = true;
   }
   renderLegend(pages);
-  renderGraph(exploredGraph(pages));
-  if (selectedPageId) select(selectedPageId);
+  renderGraph();
+  if (selectedPageId) select(selectedPageId, { expand: false });
   else updateGraphNavigation();
   renderExplorePanel();
 }
@@ -1596,22 +1809,42 @@ function closeExplore(): void {
   renderExplorePanel();
 }
 
-function renderGraph(graph: Graph): void {
+function renderGraph(): void {
+  const previousPositions = new Map(
+    simNodes.flatMap((node) => {
+      const x = node.x ?? node.fx;
+      const y = node.y ?? node.fy;
+      return x != null && y != null ? [[node.id, { x, y }] as const] : [];
+    }),
+  );
   simulation?.stop();
   lockGraphWhenSettled = false;
-  // Seed Home at the page center, then spread page types into their own
-  // regions. A large brain gets a larger map instead of a tighter knot.
   const center = pageCenter();
-  const nodes: SimNode[] = graph.nodes.map((n) => ({ ...n }));
-  seedGraphNodes(nodes, center);
-  const restoredWholeLayout = applySavedGraphLayout(nodes);
-  if (restoredWholeLayout) applyGraphCamera();
-  else centerGraphCamera();
+  const graph = buildRenderableGraph();
+  const nodes = graph.nodes;
+  const clusterTargets = seedRenderableGraphNodes(nodes, center);
+  // Keeping visible marks in place while new neighbors arrive makes expansion
+  // read as disclosure, not as the whole world being redrawn.
+  for (const node of nodes) {
+    const previous = previousPositions.get(node.id);
+    if (!previous) continue;
+    node.x = previous.x;
+    node.y = previous.y;
+    node.vx = 0;
+    node.vy = 0;
+  }
+  const restoredWholeLayout = restoreGraphLayoutOnNextRender && applySavedGraphLayout(nodes);
+  restoreGraphLayoutOnNextRender = false;
+  if (restoredWholeLayout) {
+    applyGraphCamera();
+  } else if (centerGraphOnNextRender) {
+    centerGraphCamera();
+  } else {
+    applyGraphCamera();
+  }
+  centerGraphOnNextRender = false;
   simNodes = nodes;
-  const links: SimulationLinkDatum<SimNode>[] = graph.edges.map((e) => ({
-    source: e.source,
-    target: e.target,
-  }));
+  const links = graph.links;
 
   svg.innerHTML = '';
   svg.classList.remove('focused');
@@ -1636,33 +1869,73 @@ function renderGraph(graph: Graph): void {
     const targetId = (link.target as string | SimNode) instanceof Object
       ? (link.target as SimNode).id
       : (link.target as string);
-    line.setAttribute('class', sourceId === 'index' || targetId === 'index' ? 'edge catalog-edge' : 'edge');
+    line.setAttribute('class', link.kind === 'structure' ? 'edge structure-edge' : 'edge');
     line.dataset.source = sourceId;
     line.dataset.target = targetId;
+    line.dataset.kind = link.kind;
     stage.appendChild(line);
     return line;
   });
 
   const nodeEls = nodes.map((node) => {
     const g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'node');
+    g.setAttribute('class', `node ${node.kind === 'cluster' ? 'cluster-node' : 'page-node'}`);
     g.setAttribute('data-id', node.id);
-    const ring = document.createElementNS(SVG_NS, 'circle');
-    ring.setAttribute('class', 'ring');
-    ring.setAttribute('r', '15');
-    const pulse = document.createElementNS(SVG_NS, 'circle');
-    pulse.setAttribute('class', 'pulse');
-    pulse.setAttribute('r', '13');
-    const circle = document.createElementNS(SVG_NS, 'circle');
-    circle.setAttribute('class', 'core');
-    circle.setAttribute('r', '8');
-    circle.setAttribute('fill', colorFor(node.type));
-    circle.setAttribute('filter', 'url(#lift)');
     const label = document.createElementNS(SVG_NS, 'text');
-    label.setAttribute('y', '24');
-    label.textContent = node.title;
-    g.append(ring, pulse, circle, label);
-    attachDrag(g, node);
+    if (node.kind === 'cluster') {
+      g.classList.toggle('expanded', expandedClusterIds.has(node.id));
+      const folio = document.createElementNS(SVG_NS, 'rect');
+      folio.setAttribute('class', 'cluster-folio');
+      folio.setAttribute('x', '-42');
+      folio.setAttribute('y', '-17');
+      folio.setAttribute('width', '84');
+      folio.setAttribute('height', '34');
+      folio.setAttribute('rx', '8');
+      folio.setAttribute('fill', colorFor(node.type));
+      folio.setAttribute('filter', 'url(#lift)');
+      const count = document.createElementNS(SVG_NS, 'text');
+      count.setAttribute('class', 'cluster-count');
+      count.setAttribute('y', '4');
+      count.textContent = ui('count.pages', { count: node.pageIds?.length ?? 0 });
+      label.setAttribute('class', 'cluster-label');
+      label.setAttribute('y', '31');
+      const words = node.title.split(/\s+/);
+      const firstLine: string[] = [];
+      const secondLine: string[] = [];
+      for (const word of words) {
+        const line = firstLine.join(' ');
+        if (line.length + word.length + 1 <= 24 || firstLine.length === 0) firstLine.push(word);
+        else secondLine.push(word);
+      }
+      for (const [index, line] of [firstLine.join(' '), secondLine.join(' ')].filter(Boolean).entries()) {
+        const span = document.createElementNS(SVG_NS, 'tspan');
+        span.setAttribute('x', '0');
+        span.setAttribute('dy', index === 0 ? '0' : '11');
+        span.textContent = line.length > 28 ? `${line.slice(0, 27)}…` : line;
+        label.appendChild(span);
+      }
+      g.append(folio, count, label);
+      g.addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleCluster(node.id);
+      });
+    } else {
+      const ring = document.createElementNS(SVG_NS, 'circle');
+      ring.setAttribute('class', 'ring');
+      ring.setAttribute('r', '15');
+      const pulse = document.createElementNS(SVG_NS, 'circle');
+      pulse.setAttribute('class', 'pulse');
+      pulse.setAttribute('r', '13');
+      const circle = document.createElementNS(SVG_NS, 'circle');
+      circle.setAttribute('class', 'core');
+      circle.setAttribute('r', '8');
+      circle.setAttribute('fill', colorFor(node.type));
+      circle.setAttribute('filter', 'url(#lift)');
+      label.setAttribute('y', '24');
+      label.textContent = node.title;
+      g.append(ring, pulse, circle, label);
+      attachDrag(g, node);
+    }
     stage.appendChild(g);
     return g;
   });
@@ -1683,15 +1956,22 @@ function renderGraph(graph: Graph): void {
   };
   refreshPositions = updatePositions;
 
-  const clusterTargets = typeClusterTargets(nodes, center);
-  const homeOrbit = Math.max(380, 78 * Math.sqrt(Math.max(1, nodes.length - 1)));
-  const clusterStrength = nodes.length > 70 ? 0.009 : 0.016;
+  const clusterNodeCount = nodes.filter((node) => node.kind === 'cluster').length;
+  const homeOrbit = clusterNodeCount > 0
+    ? Math.max(300, 290 + clusterNodeCount * 20)
+    : Math.max(380, 78 * Math.sqrt(Math.max(1, nodes.length - 1)));
+  const clusterStrength = nodes.length > 70 ? 0.024 : 0.04;
+  const targetFor = (node: SimNode): { x: number; y: number } => {
+    if (isHomeNode(node)) return center;
+    if (node.kind === 'cluster') return clusterTargets.get(node.id) ?? center;
+    return clusterTargets.get(node.groupId ?? node.type ?? 'untyped') ?? center;
+  };
   centerX = forceX<SimNode>((node) =>
-    isHomeNode(node) ? center.x : (clusterTargets.get(node.type ?? 'untyped')?.x ?? center.x),
-  ).strength((node) => (isHomeNode(node) ? 0.08 : clusterStrength));
+    targetFor(node).x,
+  ).strength((node) => (isHomeNode(node) ? 0.13 : node.kind === 'cluster' ? 0.16 : clusterStrength));
   centerY = forceY<SimNode>((node) =>
-    isHomeNode(node) ? center.y : (clusterTargets.get(node.type ?? 'untyped')?.y ?? center.y),
-  ).strength((node) => (isHomeNode(node) ? 0.08 : clusterStrength));
+    targetFor(node).y,
+  ).strength((node) => (isHomeNode(node) ? 0.13 : node.kind === 'cluster' ? 0.16 : clusterStrength));
   // Home remains draggable. It is only guided to the center after a
   // reorganization, where this gentle target force creates the visible return.
   homeCenterX = forceX<SimNode>((node) => (isHomeNode(node) ? center.x : 0)).strength((node) =>
@@ -1706,16 +1986,20 @@ function renderGraph(graph: Graph): void {
     .velocityDecay(LAYOUT_VELOCITY_DECAY)
     .force(
       'link',
-      forceLink<SimNode, SimulationLinkDatum<SimNode>>(links)
+      forceLink<SimNode, MapLink>(links)
         .id((d) => d.id)
-        .distance((link) =>
-          isHomeNode(link.source as SimNode) || isHomeNode(link.target as SimNode) ? homeOrbit : 180,
-        )
-        .strength((link) =>
-          isHomeNode(link.source as SimNode) || isHomeNode(link.target as SimNode) ? 0.035 : 0.3,
-        ),
+        .distance((link) => {
+          if (link.kind === 'structure') {
+            return isHomeNode(link.source as SimNode) || isHomeNode(link.target as SimNode) ? homeOrbit : 118;
+          }
+          return nodes.length > 90 ? 132 : 164;
+        })
+        .strength((link) => link.kind === 'structure' ? 0.07 : (nodes.length > 90 ? 0.1 : 0.2)),
     )
-    .force('charge', forceManyBody().strength(-460 * Math.max(1, Math.sqrt(nodes.length / 32))))
+    // The structure anchors keep high-page-count views in readable regions;
+    // Barnes-Hut charge is deliberately moderate so 100+ disclosed marks do
+    // not churn while the person pans or drags one of them.
+    .force('charge', forceManyBody().strength(nodes.length > 90 ? -260 : -380))
     .force('x', centerX)
     .force('y', centerY)
     .force('home-center-x', homeCenterX)
@@ -1723,9 +2007,9 @@ function renderGraph(graph: Graph): void {
     .force(
       'collide',
       forceCollide<SimNode>()
-        .radius(nodeCollisionRadius)
+        .radius((node) => node.kind === 'cluster' ? 86 : nodeCollisionRadius(node))
         .strength(0.95)
-        .iterations(2),
+        .iterations(nodes.length > 90 ? 1 : 2),
     )
     .on('tick', updatePositions)
     .on('end', () => {
@@ -1733,6 +2017,21 @@ function renderGraph(graph: Graph): void {
       lockGraphWhenSettled = false;
       lockGraphLayout();
     });
+
+  // D3's first tick is scheduled for the next animation frame. Paint the
+  // seeded atlas now so a search jump never flashes a pile of marks at (0, 0).
+  updatePositions();
+
+  if (jumpToPageOnNextRender) {
+    const target = nodes.find((node) => node.id === jumpToPageOnNextRender);
+    if (target) {
+      const { width, height } = viewportWorldSize();
+      graphCamera.x = (target.x ?? center.x) - width / 2;
+      graphCamera.y = (target.y ?? center.y) - height / 2;
+      applyGraphCamera();
+    }
+    jumpToPageOnNextRender = null;
+  }
 
   if (restoredWholeLayout) {
     simulation.stop();
@@ -2035,19 +2334,61 @@ function renderReaderBody(markdown: string): HTMLElement {
   return article;
 }
 
-function select(id: string): void {
+function revealPageNeighborhood(id: string): boolean {
+  if (!wholeGraph || !mapUsesProgressiveDisclosure()) return false;
+  let changed = false;
+  const reveal = (pageId: string) => {
+    if (contextualPageIds.has(pageId)) return;
+    contextualPageIds.add(pageId);
+    changed = true;
+  };
+  reveal(id);
+  for (const edge of wholeGraph.edges) {
+    if (edge.source === id && pageIsInActiveMap(edge.target)) reveal(edge.target);
+    if (edge.target === id && pageIsInActiveMap(edge.source)) reveal(edge.source);
+  }
+  return changed;
+}
+
+function toggleCluster(id: string): void {
+  if (!indexClusters.some((cluster) => cluster.id === id)) return;
+  if (expandedClusterIds.has(id)) expandedClusterIds.delete(id);
+  else expandedClusterIds.add(id);
+  renderGraph();
+  if (selectedPageId) select(selectedPageId, { expand: false });
+  else updateGraphNavigation();
+}
+
+function jumpToPage(id: string): void {
+  if (!vault?.byId.has(id)) return;
+  jumpToPageOnNextRender = id;
+  revealPageNeighborhood(id);
+  // Re-render even for a page already in view: this is a true jump, so the
+  // requested page is brought to the viewport center on both compact and
+  // progressive maps.
+  renderGraph();
+  select(id, { expand: false });
+}
+
+function select(id: string, options: { expand?: boolean } = {}): void {
   if (!vault) return;
   const page = vault.byId.get(id);
   if (!page) return;
+  const expand = options.expand ?? true;
+  if (expand) {
+    const changed = revealPageNeighborhood(id);
+    if (changed || !simNodes.some((node) => node.id === id)) renderGraph();
+  }
   selectedPageId = id;
 
-  // Focus the neighborhood: the selected node's edges become redlines and
-  // define its neighbor set; everything outside recedes (dimmed, not hidden).
+  // Focus is applied to the disclosed map, not to a pre-rendered all-pages
+  // graph. Structural membership remains legible, while real page links are
+  // the redlined immediate neighborhood.
   const neighborhood = new Set<string>([id]);
   const lines = [...svg.querySelectorAll('line.edge')] as SVGLineElement[];
   for (const line of lines) {
     const touches = line.dataset.source === id || line.dataset.target === id;
-    line.classList.toggle('lit', touches);
+    line.classList.toggle('lit', touches && line.dataset.kind === 'semantic');
     if (touches) {
       neighborhood.add(line.dataset.source!);
       neighborhood.add(line.dataset.target!);

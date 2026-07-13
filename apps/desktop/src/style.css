@@ -2587,6 +2587,14 @@ line.edge.catalog-edge {
   stroke-opacity: 0.16;
 }
 
+/* Section links are the atlas scaffolding, not claims between pages. Their
+   quieter dashed line lets a large map show hierarchy before relationships. */
+line.edge.structure-edge {
+  stroke: rgba(38, 37, 31, 0.22);
+  stroke-dasharray: 3 5;
+  stroke-width: 1.05;
+}
+
 line.edge.lit {
   stroke: var(--red);
   stroke-opacity: 0.55;
@@ -2601,6 +2609,37 @@ line.edge.lit {
 
 .node:active {
   cursor: grabbing;
+}
+
+.node.cluster-node {
+  cursor: pointer;
+}
+
+.node.cluster-node:active {
+  cursor: pointer;
+}
+
+.node .cluster-folio {
+  stroke: rgba(255, 255, 253, 0.92);
+  stroke-width: 1.5;
+  opacity: 0.9;
+  transition: opacity 180ms ease, stroke 180ms ease;
+}
+
+.node.cluster-node:hover .cluster-folio,
+.node.cluster-node.expanded .cluster-folio {
+  opacity: 1;
+  stroke: var(--red);
+}
+
+.node .cluster-count {
+  fill: rgba(255, 255, 253, 0.96);
+  font-family: var(--font-data);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  text-anchor: middle;
+  pointer-events: none;
 }
 
 .node circle.core {
@@ -2668,6 +2707,12 @@ line.edge.lit {
   font-size: 10px;
   text-anchor: middle;
   pointer-events: none;
+}
+
+.node text.cluster-label {
+  fill: rgba(38, 37, 31, 0.86);
+  font-size: 9px;
+  font-weight: 650;
 }
 
 .node.selected text {
