@@ -24,6 +24,7 @@ import {
   resolveLink,
   type Graph,
   type LintIssue,
+  type Page,
   type Vault,
   type VaultFile,
 } from 'wiki-lib';
@@ -217,6 +218,7 @@ const logPanelEl = document.getElementById('log-panel') as HTMLElement;
 const logSubEl = document.getElementById('log-sub') as HTMLElement;
 const logBodyEl = document.getElementById('log-body') as HTMLElement;
 const opIngestEl = document.getElementById('op-ingest') as HTMLButtonElement;
+const opExploreEl = document.getElementById('op-explore') as HTMLButtonElement;
 const opQueryEl = document.getElementById('op-query') as HTMLButtonElement;
 const opProfileToolsEl = document.getElementById('op-profile-tools') as HTMLButtonElement;
 const opLintEl = document.getElementById('op-lint') as HTMLButtonElement;
@@ -238,6 +240,15 @@ const queryResultEl = document.getElementById('query-result') as HTMLElement;
 const queryAnswerEl = document.getElementById('query-answer') as HTMLElement;
 const queryCitationsEl = document.getElementById('query-citations') as HTMLElement;
 const querySaveEl = document.getElementById('query-save') as HTMLButtonElement;
+const queryScopeEl = document.getElementById('query-scope') as HTMLElement;
+const explorePanelEl = document.getElementById('explore-panel') as HTMLElement;
+const exploreSearchEl = document.getElementById('explore-search') as HTMLInputElement;
+const exploreTypeFiltersEl = document.getElementById('explore-type-filters') as HTMLElement;
+const exploreConnectedEl = document.getElementById('explore-connected') as HTMLButtonElement;
+const exploreScopeEl = document.getElementById('explore-scope') as HTMLInputElement;
+const exploreSummaryEl = document.getElementById('explore-summary') as HTMLElement;
+const exploreResultsEl = document.getElementById('explore-results') as HTMLElement;
+const exploreClearEl = document.getElementById('explore-clear') as HTMLButtonElement;
 const profileToolsEl = document.getElementById('profile-tools') as HTMLElement;
 const profileToolsKickerEl = document.getElementById('profile-tools-kicker') as HTMLElement;
 const profileToolsCopyEl = document.getElementById('profile-tools-copy') as HTMLElement;
@@ -249,6 +260,7 @@ const profileToolsConfigEl = document.getElementById('profile-tools-config') as 
 const profileToolsConfigOriginEl = document.getElementById('profile-tools-config-origin') as HTMLElement;
 const profileToolsConfigTitleEl = document.getElementById('profile-tools-config-title') as HTMLElement;
 const profileToolsConfigCopyEl = document.getElementById('profile-tools-config-copy') as HTMLElement;
+const profileToolsScopeEl = document.getElementById('profile-tools-scope') as HTMLElement;
 const profileToolsFocusEl = document.getElementById('profile-tools-focus') as HTMLTextAreaElement;
 const profileToolsFormatFieldEl = document.getElementById('profile-tools-format-field') as HTMLElement;
 const profileToolsFormatEl = document.getElementById('profile-tools-format') as HTMLSelectElement;
@@ -306,6 +318,7 @@ const GRAPH_MAX_ZOOM = 2.5;
 const INFRA_FILES = new Set(['log.md', 'eva.md', 'agents.md', 'claude.md']);
 
 let vault: Vault | null = null;
+let wholeGraph: Graph | null = null;
 let issues: LintIssue[] = [];
 let logRaw: string | null = null;
 let currentVault: string | null = null;
@@ -329,6 +342,11 @@ let currentBrainSettings: BrainSettings | null = null;
 let latestProfileTool: { tool: ProfileToolId; title: string; answer: QueryAnswer } | null = null;
 let profileToolRunning = false;
 let selectedProfileTool: ProfileToolId | null = null;
+let selectedPageId: string | null = null;
+let exploreQuery = '';
+let exploreVisibleTypes = new Set<string>();
+let exploreConnectionsOnly = false;
+let exploreScopeEnabled = false;
 let otherProfileToolsVisible = false;
 let healthReport: HealthReport | null = null;
 let healthError: string | null = null;
@@ -401,12 +419,19 @@ function applyInterfaceLanguage(): void {
   document.querySelectorAll<HTMLElement>('[data-ui-placeholder]').forEach((element) => {
     element.setAttribute('placeholder', ui(element.dataset.uiPlaceholder as ChromeKey));
   });
+  document.querySelectorAll<HTMLElement>('[data-ui-title]').forEach((element) => {
+    element.title = ui(element.dataset.uiTitle as ChromeKey);
+  });
+  document.querySelectorAll<HTMLElement>('[data-ui-aria-label]').forEach((element) => {
+    element.setAttribute('aria-label', ui(element.dataset.uiAriaLabel as ChromeKey));
+  });
   populateAppLanguageOptions();
   populateBrainProfileOptions(newVaultProfileEl, newVaultProfileEl.value || 'research');
   updateNewVaultProfileFrame();
   if (!currentVault) vaultPathEl.textContent = t('nav.noBrain');
   const selectedId = svg.querySelector<SVGGElement>('.node.selected')?.dataset.id;
-  if (vault) renderLegend();
+  if (vault) renderLegend(exploredPages());
+  if (vault) renderExplorePanel();
   if (selectedId) select(selectedId);
   refreshRecentViews();
   if (!brainLibraryEl.hidden) void loadBrainLibrary();
@@ -697,7 +722,7 @@ function updateGraphNavigation(): void {
   graphZoomOutEl.title = ui('map.zoomOut');
   graphZoomInEl.setAttribute('aria-label', ui('map.zoomIn'));
   graphZoomInEl.title = ui('map.zoomIn');
-  graphShowAllEl.hidden = !selected;
+  graphShowAllEl.hidden = !selected && !exploreHasNarrowing();
   graphNavigationHintEl.textContent = selected ? ui('map.focus', { title: selected.title }) : ui('map.hint');
 }
 
@@ -1232,6 +1257,8 @@ async function openVault(root: string): Promise<void> {
 
   const files = await collectMarkdown(root);
   vault = buildVault(files);
+  wholeGraph = buildGraph(vault);
+  resetExploreState();
   issues = lintVault(vault);
   saveRecents([root, ...getRecents().filter((p) => p !== root)]);
   refreshRecentViews();
@@ -1242,13 +1269,14 @@ async function openVault(root: string): Promise<void> {
   graphNavigationEl.hidden = false;
   closeSidePanels();
   renderLegend();
-  renderGraph(buildGraph(vault));
+  renderGraph(wholeGraph);
+  renderExplorePanel();
   updateExclusions();
 }
 
-function renderLegend(): void {
+function renderLegend(pages = vault?.pages ?? []): void {
   if (!vault) return;
-  const present = new Set(vault.pages.map((p) => p.type ?? 'untyped'));
+  const present = new Set(pages.map((p) => p.type ?? 'untyped'));
   legendEl.innerHTML = '';
   for (const type of [...TYPE_ORDER, 'untyped']) {
     if (!present.has(type)) continue;
@@ -1260,7 +1288,174 @@ function renderLegend(): void {
     key.append(dot, document.createTextNode(pageTypeLabel(type === 'untyped' ? null : type)));
     legendEl.appendChild(key);
   }
-  legendEl.hidden = vault.pages.length === 0;
+  legendEl.hidden = pages.length === 0;
+}
+
+function normalizeExploreText(value: string): string {
+  return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase();
+}
+
+function allExploreTypes(): string[] {
+  if (!vault) return [];
+  return [...new Set(vault.pages.map((page) => page.type ?? 'untyped'))];
+}
+
+function resetExploreState(): void {
+  exploreQuery = '';
+  exploreVisibleTypes = new Set(allExploreTypes());
+  exploreConnectionsOnly = false;
+  exploreScopeEnabled = false;
+  selectedPageId = null;
+  exploreSearchEl.value = '';
+  exploreScopeEl.checked = false;
+}
+
+function exploreHasNarrowing(): boolean {
+  return Boolean(
+    exploreQuery ||
+    exploreConnectionsOnly ||
+    (vault && exploreVisibleTypes.size !== allExploreTypes().length),
+  );
+}
+
+function exploredPages(): Page[] {
+  if (!vault) return [];
+  const needle = normalizeExploreText(exploreQuery.trim());
+  let pages = vault.pages.filter((page) => {
+    const type = page.type ?? 'untyped';
+    if (!exploreVisibleTypes.has(type)) return false;
+    if (!needle) return true;
+    const searchable = [page.title, page.id, page.type ?? '', ...Object.values(page.frontmatter), page.body].join('\n');
+    return normalizeExploreText(searchable).includes(needle);
+  });
+  if (exploreConnectionsOnly && selectedPageId && wholeGraph) {
+    const connected = new Set<string>([selectedPageId]);
+    for (const edge of wholeGraph.edges) {
+      if (edge.source === selectedPageId) connected.add(edge.target);
+      if (edge.target === selectedPageId) connected.add(edge.source);
+    }
+    pages = pages.filter((page) => connected.has(page.id));
+  }
+  return pages;
+}
+
+function exploredGraph(pages = exploredPages()): Graph {
+  if (!wholeGraph) return { nodes: [], edges: [] };
+  const ids = new Set(pages.map((page) => page.id));
+  return {
+    nodes: wholeGraph.nodes.filter((node) => ids.has(node.id)),
+    edges: wholeGraph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
+  };
+}
+
+function activeWorkingSetPageIds(): string[] {
+  return exploreScopeEnabled ? exploredPages().map((page) => page.id) : [];
+}
+
+function renderWorkingSetNotes(): void {
+  const pages = activeWorkingSetPageIds();
+  const text = ui('explore.scopeActive', { count: pages.length });
+  queryScopeEl.hidden = pages.length === 0;
+  queryScopeEl.textContent = pages.length > 0 ? text : '';
+  profileToolsScopeEl.hidden = pages.length === 0;
+  profileToolsScopeEl.textContent = pages.length > 0 ? text : '';
+}
+
+function renderExplorePanel(): void {
+  if (!vault) return;
+  const pages = exploredPages();
+  const types = allExploreTypes();
+  exploreTypeFiltersEl.innerHTML = '';
+  for (const type of [...TYPE_ORDER, 'untyped']) {
+    if (!types.includes(type)) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'explore-type-filter';
+    button.classList.toggle('active', exploreVisibleTypes.has(type));
+    button.setAttribute('aria-pressed', String(exploreVisibleTypes.has(type)));
+    const dot = document.createElement('span');
+    dot.className = 'type-dot';
+    dot.style.setProperty('--dot', colorFor(type === 'untyped' ? null : type));
+    button.append(dot, document.createTextNode(pageTypeLabel(type === 'untyped' ? null : type)));
+    button.addEventListener('click', () => {
+      if (exploreVisibleTypes.has(type)) exploreVisibleTypes.delete(type);
+      else exploreVisibleTypes.add(type);
+      applyExploreFilters();
+    });
+    exploreTypeFiltersEl.appendChild(button);
+  }
+  const hasSelection = selectedPageId !== null;
+  exploreConnectedEl.disabled = !hasSelection;
+  exploreConnectedEl.setAttribute('aria-pressed', String(exploreConnectionsOnly));
+  exploreConnectedEl.classList.toggle('active', exploreConnectionsOnly);
+  exploreScopeEl.checked = exploreScopeEnabled;
+  exploreSummaryEl.textContent = ui('explore.visible', { count: pages.length });
+  exploreResultsEl.innerHTML = '';
+  if (pages.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'explore-empty';
+    empty.textContent = ui('explore.none');
+    exploreResultsEl.appendChild(empty);
+  } else {
+    for (const page of pages.slice(0, 36)) {
+      const result = document.createElement('button');
+      result.type = 'button';
+      result.className = 'explore-result';
+      result.classList.toggle('selected', page.id === selectedPageId);
+      const title = document.createElement('span');
+      title.className = 'explore-result-title';
+      title.textContent = page.title;
+      const meta = document.createElement('span');
+      meta.className = 'explore-result-meta';
+      meta.textContent = `${pageTypeLabel(page.type)} · ${page.id}`;
+      result.append(title, meta);
+      result.addEventListener('click', () => select(page.id));
+      exploreResultsEl.appendChild(result);
+    }
+  }
+  renderWorkingSetNotes();
+  opExploreEl.classList.toggle('active', !explorePanelEl.hidden || exploreHasNarrowing() || exploreScopeEnabled);
+  opExploreEl.setAttribute('aria-pressed', String(!explorePanelEl.hidden));
+}
+
+function applyExploreFilters(): void {
+  if (!vault || !wholeGraph) return;
+  const pages = exploredPages();
+  if (pages.length === 0) exploreScopeEnabled = false;
+  const visibleIds = new Set(pages.map((page) => page.id));
+  const selected = selectedPageId;
+  if (selected && !visibleIds.has(selected)) {
+    selectedPageId = null;
+    detailEl.hidden = true;
+  }
+  renderLegend(pages);
+  renderGraph(exploredGraph(pages));
+  if (selectedPageId) select(selectedPageId);
+  else updateGraphNavigation();
+  renderExplorePanel();
+}
+
+function clearExploreFilters(): void {
+  if (!vault) return;
+  exploreQuery = '';
+  exploreSearchEl.value = '';
+  exploreVisibleTypes = new Set(allExploreTypes());
+  exploreConnectionsOnly = false;
+  exploreScopeEnabled = false;
+  exploreScopeEl.checked = false;
+  applyExploreFilters();
+}
+
+function showExplore(): void {
+  if (!vault) return;
+  explorePanelEl.hidden = false;
+  renderExplorePanel();
+  window.setTimeout(() => exploreSearchEl.focus(), 0);
+}
+
+function closeExplore(): void {
+  explorePanelEl.hidden = true;
+  renderExplorePanel();
 }
 
 function renderGraph(graph: Graph): void {
@@ -1706,6 +1901,7 @@ function select(id: string): void {
   if (!vault) return;
   const page = vault.byId.get(id);
   if (!page) return;
+  selectedPageId = id;
 
   // Focus the neighborhood: the selected node's edges become redlines and
   // define its neighbor set; everything outside recedes (dimmed, not hidden).
@@ -1771,9 +1967,16 @@ function select(id: string): void {
   sidebar.append(heading, meta, lintBox, body);
   detailEl.hidden = false;
   updateExclusions();
+  renderExplorePanel();
 }
 
 function deselect(): void {
+  selectedPageId = null;
+  if (exploreConnectionsOnly) {
+    exploreConnectionsOnly = false;
+    applyExploreFilters();
+    return;
+  }
   detailEl.hidden = true;
   svg.classList.remove('focused');
   svg.querySelectorAll('.node.selected').forEach((el) => el.classList.remove('selected'));
@@ -1781,6 +1984,7 @@ function deselect(): void {
   svg.querySelectorAll('line.edge').forEach((el) => el.classList.remove('lit', 'faded'));
   updateExclusions();
   updateGraphNavigation();
+  renderExplorePanel();
 }
 
 function goHome(): void {
@@ -1797,6 +2001,7 @@ function goHome(): void {
   if (!queryPanelEl.hidden) closeQuery();
   if (!profileToolsEl.hidden) closeProfileTools();
   closeSidePanels();
+  closeExplore();
   deselect();
 
   // Home is Eva's launcher, not the graph's central index page. The brain
@@ -1808,10 +2013,12 @@ function goHome(): void {
   refreshPositions = null;
   svg.innerHTML = '';
   vault = null;
+  wholeGraph = null;
   issues = [];
   logRaw = null;
   currentVault = null;
   currentBrainSettings = null;
+  resetExploreState();
   updateProfileToolsAvailability();
   healthReport = null;
   healthError = null;
@@ -2228,6 +2435,7 @@ function showQuery(): void {
   latestQuery = null;
   setQueryError(null);
   setQueryRunning(false);
+  renderWorkingSetNotes();
   syncOperationModal();
   window.setTimeout(() => queryQuestionEl.focus(), 0);
 }
@@ -2424,6 +2632,7 @@ function showProfileTools(): void {
   setProfileToolsError(null);
   setProfileToolRunning(false);
   renderProfileTools();
+  renderWorkingSetNotes();
   profileToolsEl.hidden = false;
   syncOperationModal();
   window.setTimeout(() => {
@@ -2483,6 +2692,7 @@ async function runProfileTool(): Promise<void> {
       vault: currentVault,
       tool: selectedProfileTool,
       options,
+      scope: activeWorkingSetPageIds(),
     });
     latestProfileTool = {
       tool: selectedProfileTool,
@@ -2541,7 +2751,11 @@ async function runQuery(): Promise<void> {
   queryResultEl.hidden = true;
   setQueryRunning(true);
   try {
-    const answer = await invoke<QueryAnswer>('query_run', { vault: currentVault, question });
+    const answer = await invoke<QueryAnswer>('query_run', {
+      vault: currentVault,
+      question,
+      scope: activeWorkingSetPageIds(),
+    });
     latestQuery = { question, answer };
     renderQueryAnswer(answer);
   } catch (error) {
@@ -2808,6 +3022,25 @@ newVaultFormEl.addEventListener('submit', (event) => {
 });
 document.getElementById('detail-close')!.addEventListener('click', deselect);
 opIngestEl.addEventListener('click', () => void startIngest());
+opExploreEl.addEventListener('click', () => {
+  if (explorePanelEl.hidden) showExplore();
+  else closeExplore();
+});
+document.getElementById('explore-close')!.addEventListener('click', closeExplore);
+exploreSearchEl.addEventListener('input', () => {
+  exploreQuery = exploreSearchEl.value;
+  applyExploreFilters();
+});
+exploreConnectedEl.addEventListener('click', () => {
+  if (!selectedPageId) return;
+  exploreConnectionsOnly = !exploreConnectionsOnly;
+  applyExploreFilters();
+});
+exploreScopeEl.addEventListener('change', () => {
+  exploreScopeEnabled = exploreScopeEl.checked;
+  renderExplorePanel();
+});
+exploreClearEl.addEventListener('click', clearExploreFilters);
 opQueryEl.addEventListener('click', showQuery);
 opProfileToolsEl.addEventListener('click', showProfileTools);
 document.getElementById('profile-tools-close')!.addEventListener('click', closeProfileTools);
@@ -2929,7 +3162,10 @@ graphCenterViewEl.addEventListener('click', () => {
   centerGraphCamera();
   persistGraphLayout();
 });
-graphShowAllEl.addEventListener('click', deselect);
+graphShowAllEl.addEventListener('click', () => {
+  if (exploreHasNarrowing()) clearExploreFilters();
+  deselect();
+});
 
 svg.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
@@ -3009,6 +3245,10 @@ document.addEventListener('keydown', (event) => {
   }
   if (!newVaultEl.hidden) {
     closeNewVault();
+    return;
+  }
+  if (!explorePanelEl.hidden) {
+    closeExplore();
     return;
   }
   if (!lintPanelEl.hidden || !logPanelEl.hidden) {

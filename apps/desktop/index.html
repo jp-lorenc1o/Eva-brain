@@ -42,6 +42,7 @@
         <button id="op-ingest" class="op" title="Add source documents for the agent to integrate into this brain">
           <span data-i18n="op.ingest">Ingest</span>
         </button>
+        <button id="op-explore" class="op" type="button" aria-pressed="false" data-ui-title="explore.title" title="Explore brain"><span data-ui="explore.button">Explore</span></button>
         <button id="op-query" class="op" title="Ask the current brain a cited question"><span data-i18n="op.query">Query</span></button>
         <button id="op-profile-tools" class="op" type="button" title="Run tools tailored to this brain's profile" hidden>Tools</button>
         <button id="op-lint" class="op" aria-pressed="false" data-i18n="op.health">Health</button>
@@ -75,6 +76,30 @@
       <button id="detail-close" class="panel-close" data-i18n-aria-label="aria.close" aria-label="Close details">&#10005;</button>
       <div id="sidebar"></div>
     </aside>
+    <aside id="explore-panel" class="glass" hidden data-ui-aria-label="explore.title" aria-label="Explore brain">
+      <button id="explore-close" class="panel-close" type="button" data-i18n-aria-label="aria.close" aria-label="Close">&#10005;</button>
+      <div class="explore-head">
+        <p class="form-kicker" data-ui="explore.kicker">Navigate</p>
+        <h2 data-ui="explore.title">Explore brain</h2>
+      </div>
+      <label class="sr-only" for="explore-search" data-ui="explore.searchLabel">Search pages</label>
+      <input id="explore-search" class="text-input explore-search" type="search" autocomplete="off" data-ui-placeholder="explore.searchPlaceholder" placeholder="Search titles, notes, and sources…" />
+      <div class="explore-filter-head">
+        <span data-ui="explore.types">Page types</span>
+        <button id="explore-clear" class="explore-clear" type="button" data-ui="explore.clear">Clear</button>
+      </div>
+      <div id="explore-type-filters" class="explore-type-filters" data-ui-aria-label="explore.types" aria-label="Page types"></div>
+      <button id="explore-connected" class="explore-connected" type="button" aria-pressed="false" disabled data-ui="explore.connected">Only connections to the open page</button>
+      <label class="explore-scope">
+        <input id="explore-scope" type="checkbox" />
+        <span>
+          <strong data-ui="explore.scope">Use this as my working set</strong>
+          <small data-ui="explore.scopeCopy">Questions and tools will use only these pages.</small>
+        </span>
+      </label>
+      <p id="explore-summary" class="explore-summary" aria-live="polite"></p>
+      <div id="explore-results" class="explore-results" aria-live="polite"></div>
+    </aside>
     <aside id="graph-navigation" class="glass" hidden aria-label="Map controls">
       <p class="graph-navigation-kicker" data-ui="map.label">Map</p>
       <div class="graph-zoom-controls">
@@ -105,6 +130,7 @@
         <h2 data-i18n="query.title">Query brain</h2>
         <p class="form-copy" data-i18n="query.copy">Eva reads the current brain and returns a cited answer. Asking never changes it; saving creates a reviewable analysis page.</p>
       </div>
+      <p id="query-scope" class="working-set-note" hidden></p>
       <form id="query-form">
         <label class="form-label" for="query-question" data-i18n="query.question">Question</label>
         <textarea id="query-question" class="query-input" rows="4" maxlength="4000" data-i18n-placeholder="query.placeholder" placeholder="What does the evidence suggest about…"></textarea>
@@ -141,6 +167,7 @@
         <p id="profile-tools-config-origin" class="profile-tools-config-origin"></p>
         <h3 id="profile-tools-config-title"></h3>
         <p id="profile-tools-config-copy" class="profile-tools-config-copy"></p>
+        <p id="profile-tools-scope" class="working-set-note" hidden></p>
         <label class="form-label" for="profile-tools-focus"><span data-ui="tool.focus">Topics or focus</span> <span class="optional" data-i18n="common.optional">Optional</span></label>
         <textarea id="profile-tools-focus" class="query-input profile-tools-focus" rows="2" maxlength="400" data-ui-placeholder="tool.focusPlaceholder" placeholder="Leave empty to use the whole brain."></textarea>
         <div class="profile-tools-config-grid">
