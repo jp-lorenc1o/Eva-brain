@@ -1,0 +1,474 @@
+/* ---------------------------------------------------------------------------
+   Eva marketing page — proof copy, same stock as the app.
+   Every token below is lifted verbatim from apps/desktop/src/style.css:
+   cream manuscript paper, archival node inks, and #CB181D reserved for the
+   red pen: selection, redlines, holds. Never decoration.
+--------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: 'Fragment Mono';
+  src: url('fonts/fragment-mono-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Sans Variable';
+  src: url('fonts/instrument-sans-latin-wght-normal.woff2') format('woff2-variations');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Newsreader Variable';
+  src: url('fonts/newsreader-latin-opsz-normal.woff2') format('woff2-variations');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light; /* single-theme by design: ink on paper, like the app */
+
+  --paper: #f5f5f0;
+  --recess: #ecebe1;
+  --hairline: #d9d7c9;
+  --ink: #26251f;
+  --ink-dim: #75726e;
+  --red: #cb181d;
+
+  --vellum-hi: rgba(255, 255, 253, 0.74);
+  --vellum-lo: rgba(251, 250, 244, 0.56);
+  --vellum-edge: rgba(120, 115, 95, 0.24);
+
+  --font-data: 'Fragment Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-body: 'Instrument Sans Variable', 'Instrument Sans', system-ui, sans-serif;
+  --font-opening: 'Newsreader Variable', 'Newsreader', Georgia, serif;
+
+  /* node inks — muted archival tones, none competing with the red pen */
+  --node-index: #7c3a2d;
+  --node-concept: #46617d;
+  --node-entity: #5c7150;
+  --node-summary: #8c6a4f;
+  --node-analysis: #7c5b78;
+  --node-project: #a98436;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 800px at 50% 20%, #f8f8f4, transparent 75%),
+    var(--paper);
+}
+
+/* paper tooth: one static grain layer, no animation (same data URI as app) */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.03;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Vellum sheets: warm-white panes, graphite depth, never dark glass -------- */
+.vellum {
+  border-radius: 14px;
+  border: 1px solid var(--vellum-edge);
+  background: linear-gradient(180deg, var(--vellum-hi), var(--vellum-lo));
+  -webkit-backdrop-filter: blur(16px) saturate(1.05);
+  backdrop-filter: blur(16px) saturate(1.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 18px 44px rgba(60, 55, 40, 0.13),
+    0 4px 12px rgba(60, 55, 40, 0.09);
+}
+
+/* Layout shell -------------------------------------------------------------- */
+main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.site-head {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 28px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--font-opening);
+  font-size: 28px;
+  font-variation-settings: 'opsz' 36;
+  font-weight: 510;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.brand img {
+  display: block;
+  mix-blend-mode: multiply;
+}
+
+.platform-note {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+}
+
+/* Hero ---------------------------------------------------------------------- */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(320px, 5fr) minmax(360px, 6fr);
+  gap: 44px;
+  align-items: center;
+  padding: 56px 0 72px;
+}
+
+.kicker {
+  margin: 0 0 10px;
+  color: var(--red);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0 0 14px;
+  font-family: var(--font-opening);
+  font-variation-settings: 'opsz' 36;
+  font-weight: 510;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+  font-size: clamp(38px, 5.4vw, 58px);
+  color: #302e28;
+}
+
+.hero-sub {
+  margin: 0 0 24px;
+  max-width: 42ch;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Red-pen action button, verbatim treatment from the app ------------------- */
+.btn-stamp {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red);
+  background: transparent;
+  border: 1px solid var(--red);
+  border-radius: 999px;
+  padding: 10px 18px;
+  text-decoration: none;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.btn-stamp:hover { background: var(--red); color: var(--paper); }
+.btn-stamp:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+.btn-quiet {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 2px;
+  transition: color 200ms ease, border-color 200ms ease;
+}
+
+.btn-quiet:hover { color: var(--ink); border-color: var(--ink-dim); }
+.btn-quiet:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+/* The live brain -------------------------------------------------------------
+   Same marks as the app: ink cores with a paper stroke and graphite lift,
+   quiet grey links, red dashed ring on the selected page. */
+.hero-graph {
+  margin: 0;
+  padding: 10px 10px 6px;
+}
+
+#brain {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: default;
+}
+
+#brain line.edge {
+  stroke: rgba(38, 37, 31, 0.16);
+  stroke-width: 1;
+  transition: opacity 250ms ease;
+}
+
+#brain line.edge.lit {
+  stroke: var(--red);
+  stroke-opacity: 0.55;
+  stroke-width: 1.2;
+}
+
+#brain .node { cursor: pointer; transition: opacity 250ms ease; }
+
+#brain .node circle.core {
+  stroke: var(--paper);
+  stroke-width: 2;
+}
+
+#brain .node circle.ring {
+  display: none;
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+#brain .node.selected circle.ring {
+  display: inline;
+  animation: redpen 7s linear infinite;
+}
+
+@keyframes redpen {
+  to { stroke-dashoffset: -48; }
+}
+
+#brain .node text {
+  fill: rgba(38, 37, 31, 0.72);
+  font-family: var(--font-data);
+  font-size: 10px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+#brain .node.selected text { fill: var(--ink); }
+
+#brain.focused .node.faded { opacity: 0.16; }
+#brain.focused line.edge.faded { opacity: 0.22; }
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 8px 10px 6px;
+  border-top: 1px solid var(--hairline);
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.graph-legend .key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-legend .type-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot, var(--ink-dim));
+  box-shadow: 0 1px 2px rgba(60, 55, 40, 0.35);
+}
+
+/* Prose block ---------------------------------------------------------------- */
+.prose-block {
+  padding: 40px 0 64px;
+  border-top: 1px solid var(--hairline);
+}
+
+.prose-block h2,
+.ops h2,
+.trust h2 {
+  margin: 0 0 18px;
+  font-family: var(--font-opening);
+  font-variation-settings: 'opsz' 24;
+  font-weight: 510;
+  letter-spacing: -0.03em;
+  font-size: clamp(26px, 3.4vw, 34px);
+  color: #302e28;
+}
+
+.prose-block p {
+  max-width: 62ch;
+  margin: 0 0 14px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #4a4840;
+}
+
+/* Operations ------------------------------------------------------------------ */
+.ops { padding: 40px 0 64px; border-top: 1px solid var(--hairline); }
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 26px;
+}
+
+.op-cell { padding: 20px 22px 16px; }
+
+.op-cell h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.op-cell p {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #4a4840;
+}
+
+.op-cell code,
+.trust-item code {
+  font-family: var(--font-data);
+  font-size: 0.92em;
+  background: var(--recess);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.chip {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: rgba(255, 255, 253, 0.6);
+}
+
+.chip-hold {
+  color: var(--red);
+  border-color: rgba(203, 24, 29, 0.45);
+  background: rgba(203, 24, 29, 0.05);
+}
+
+.chip-issue { border-style: dashed; }
+
+.chip-cite { color: #4a4840; }
+
+/* Trust ledger ------------------------------------------------------------------ */
+.trust { padding: 40px 0 72px; border-top: 1px solid var(--hairline); }
+
+.trust-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px 40px;
+  margin: 26px 0 0;
+}
+
+.trust-item dt {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.trust-item dd {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #4a4840;
+  max-width: 46ch;
+}
+
+/* Footer -------------------------------------------------------------------------- */
+.site-foot {
+  border-top: 1px solid var(--hairline);
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 28px 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.foot-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--ink-dim);
+}
+
+.foot-brand img { mix-blend-mode: multiply; }
+
+.foot-links {
+  display: flex;
+  gap: 18px;
+}
+
+.foot-links a {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 2px;
+}
+
+.foot-links a:hover { color: var(--red); border-color: var(--red); }
+
+/* Responsive ------------------------------------------------------------------------ */
+@media (max-width: 880px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 30px;
+    padding: 36px 0 52px;
+  }
+  .ops-grid, .trust-grid { grid-template-columns: 1fr; }
+}
+
+/* Motion discipline: the graph settles instantly and holds still ------------------ */
+@media (prefers-reduced-motion: reduce) {
+  #brain .node.selected circle.ring { animation: none; }
+  #brain .node, #brain line.edge, .btn-stamp, .btn-quiet { transition: none; }
+}
