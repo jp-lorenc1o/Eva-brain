@@ -1,7 +1,7 @@
 // Ingest orchestration: job queue, git branch/worktree management, the
 // headless agent subprocess, and the lint gate. The webview only invokes the
 // commands at the bottom and renders the events this module emits.
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -1200,6 +1200,24 @@ fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").chars().take(72).collect()
 }
 
+/// Agents are asked for bare JSON, but a harmless Markdown fence or one
+/// sentence of framing should not turn an otherwise valid read-only result
+/// into a failed operation. Parse an exact response first, then the first JSON
+/// object embedded in it; the target schema remains the validation boundary.
+fn parse_agent_json<T: DeserializeOwned>(response: &str, error: &str) -> Result<T, String> {
+    let response = response.trim();
+    if let Ok(value) = serde_json::from_str(response) {
+        return Ok(value);
+    }
+    if let Some(start) = response.find('{') {
+        let mut deserializer = serde_json::Deserializer::from_str(&response[start..]);
+        if let Ok(value) = T::deserialize(&mut deserializer) {
+            return Ok(value);
+        }
+    }
+    Err(error.into())
+}
+
 fn append_log(dir: &Path, operation: &str, subject: &str, body: &str) -> Result<(), String> {
     let log_path = dir.join("log.md");
     let mut log = fs::read_to_string(&log_path).unwrap_or_else(|_| "# Log\n".to_string());
@@ -1505,8 +1523,10 @@ Question: {question}"#,
         if result_text.trim().is_empty() {
             return Err("agent returned no answer".into());
         }
-        let answer: QueryAnswer = serde_json::from_str(result_text.trim())
-            .map_err(|_| "agent returned an invalid cited answer; try again".to_string())?;
+        let answer: QueryAnswer = parse_agent_json(
+            &result_text,
+            "agent returned an invalid cited answer; try again",
+        )?;
         if answer.answer.trim().is_empty() {
             return Err("agent returned an empty answer".into());
         }
@@ -1608,8 +1628,10 @@ fn drive_claude_health_agent(
         if result_text.trim().is_empty() {
             return Err("agent returned no health report".into());
         }
-        let report: HealthReport = serde_json::from_str(result_text.trim())
-            .map_err(|_| "agent returned an invalid health report; try again".to_string())?;
+        let report: HealthReport = parse_agent_json(
+            &result_text,
+            "agent returned an invalid health report; try again",
+        )?;
         if report.summary.trim().is_empty() {
             return Err("agent returned a health report without a summary".into());
         }
@@ -1696,8 +1718,10 @@ fn drive_claude_profile_tool(
         if result_text.trim().is_empty() {
             return Err("agent returned no tool result".into());
         }
-        let result: ProfileToolResult = serde_json::from_str(result_text.trim())
-            .map_err(|_| "agent returned an invalid tool result; try again".to_string())?;
+        let result: ProfileToolResult = parse_agent_json(
+            &result_text,
+            "agent returned an invalid tool result; try again",
+        )?;
         validate_profile_tool_result(result)
     })();
     let _ = fs::remove_file(&cfg_path);
@@ -2024,8 +2048,10 @@ Question: {question}"#,
         scope_instruction = working_set_instruction(scope),
     );
     let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_query_schema()), config)?;
-    let answer: QueryAnswer = serde_json::from_str(result.trim())
-        .map_err(|_| "Codex returned an invalid cited answer; try again".to_string())?;
+    let answer: QueryAnswer = parse_agent_json(
+        &result,
+        "Codex returned an invalid cited answer; try again",
+    )?;
     if answer.answer.trim().is_empty() {
         return Err("Codex returned an empty answer".into());
     }
@@ -2049,8 +2075,10 @@ fn drive_codex_health_agent(
         maintenance_guidance = profile.maintenance_guidance(),
     );
     let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_health_schema()), config)?;
-    let report: HealthReport = serde_json::from_str(result.trim())
-        .map_err(|_| "Codex returned an invalid health report; try again".to_string())?;
+    let report: HealthReport = parse_agent_json(
+        &result,
+        "Codex returned an invalid health report; try again",
+    )?;
     if report.summary.trim().is_empty() {
         return Err("Codex returned a health report without a summary".into());
     }
@@ -2067,8 +2095,10 @@ fn drive_codex_profile_tool(
 ) -> Result<ProfileToolResult, String> {
     let prompt = profile_tool_prompt(profile, tool, options, scope);
     let result = run_codex_agent(vault, &prompt, "read-only", Some(codex_profile_tool_schema()), config)?;
-    let result: ProfileToolResult = serde_json::from_str(result.trim())
-        .map_err(|_| "Codex returned an invalid tool result; try again".to_string())?;
+    let result: ProfileToolResult = parse_agent_json(
+        &result,
+        "Codex returned an invalid tool result; try again",
+    )?;
     validate_profile_tool_result(result)
 }
 
@@ -2725,7 +2755,7 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, normalize_profile_tool_options, normalize_working_set, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, eva_schema, git, git_action_needs_eva_identity, init_git_repo, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD};
     use std::{
         fs,
         path::Path,
@@ -2756,6 +2786,17 @@ mod tests {
         let markdown = analysis_markdown("What compounds?", &answer, "Analysis — What compounds?");
         assert!(markdown.contains("sources: raw/letter.txt"));
         assert!(markdown.contains("[[concepts/compounding]]"));
+    }
+
+    #[test]
+    fn agent_json_parser_accepts_a_fenced_health_report() {
+        let report: HealthReport = parse_agent_json(
+            "Here is the report:\n```json\n{\"summary\":\"No critical gaps\",\"findings\":[]}\n```",
+            "invalid health report",
+        )
+        .unwrap();
+        assert_eq!(report.summary, "No critical gaps");
+        assert!(report.findings.is_empty());
     }
 
     #[test]
