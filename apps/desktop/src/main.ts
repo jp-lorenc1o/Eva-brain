@@ -911,10 +911,17 @@ async function loadBrainLibrary(): Promise<void> {
 function closeBrainLibrary(): void {
   brainLibraryEl.hidden = true;
   setBrainLibraryError(null);
+  if (!currentVault && newVaultEl.hidden && brainManagerEl.hidden && appSettingsEl.hidden) {
+    emptyEl.hidden = false;
+  }
   updateExclusions();
 }
 
 function showBrainLibrary(): void {
+  // Choosing a local brain is its own first-screen task. Hide the launcher so
+  // the library reads as one quiet destination, not a second sheet on top of
+  // the opening choices.
+  if (!currentVault) emptyEl.hidden = true;
   brainLibraryEl.hidden = false;
   setBrainLibraryError(null);
   updateExclusions();
@@ -1238,6 +1245,9 @@ async function createNewVault(): Promise<void> {
 }
 
 async function openVault(root: string): Promise<void> {
+  // Any route into a brain completes the library flow. This also protects
+  // against a late list refresh leaving the chooser over an opened brain.
+  closeBrainLibrary();
   currentVault = root;
   currentBrainSettings = null;
   updateProfileToolsAvailability();
