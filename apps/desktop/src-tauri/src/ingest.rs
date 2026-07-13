@@ -488,7 +488,7 @@ fn git_action_needs_eva_identity(args: &[&str]) -> bool {
 
 /// The vault must be the ROOT of its own git repository — this is what keeps
 /// ingest from ever branching a repo the vault merely lives inside (e.g. the
-/// eva-wiki repo containing test-vault).
+/// Eva-brain repo containing test-vault).
 fn require_vault_repo(vault: &Path) -> Result<PathBuf, String> {
     let root = vault
         .canonicalize()
