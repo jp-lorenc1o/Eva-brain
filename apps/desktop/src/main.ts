@@ -1951,7 +1951,7 @@ function select(id: string): void {
   lintBox.className = 'lint';
   if (pageIssues.length === 0) {
     lintBox.classList.add('clean');
-    lintBox.textContent = 'No lint issues.';
+    lintBox.textContent = ui('health.pageClean');
   } else {
     for (const issue of pageIssues) {
       const item = document.createElement('div');
@@ -2109,7 +2109,7 @@ function renderHealthReport(section: HTMLElement): void {
   if (healthCheckRunning) {
     const pending = document.createElement('p');
     pending.className = 'health-pending';
-    pending.textContent = 'Reading the brain for maintenance signals…';
+    pending.textContent = ui('health.pending');
     section.appendChild(pending);
     return;
   }
@@ -2129,7 +2129,7 @@ function renderHealthReport(section: HTMLElement): void {
   if (healthReport.findings.length === 0) {
     const clean = document.createElement('p');
     clean.className = 'health-clean';
-    clean.textContent = 'No advisory maintenance work identified.';
+    clean.textContent = ui('health.none');
     section.appendChild(clean);
     return;
   }
@@ -2176,19 +2176,19 @@ async function runHealthCheck(): Promise<void> {
   healthCheckRunning = true;
   healthError = null;
   renderLintPanel();
-  setIngestStatus('Checking brain health…', true);
+  setIngestStatus(ui('health.checkingStatus'), true);
   try {
     const report = await invoke<HealthReport>('health_check_run', { vault: vaultPath });
     if (currentVault !== vaultPath) return;
     healthReport = report;
     setIngestStatus(
-      `${report.findings.length} advisory finding${report.findings.length === 1 ? '' : 's'}`,
+      ui('health.findings', { count: report.findings.length }),
       false,
     );
   } catch (error) {
     if (currentVault === vaultPath) {
       healthError = String(error);
-      setIngestStatus('Health check could not run', false);
+      setIngestStatus(ui('health.failed'), false);
     }
   } finally {
     if (currentVault === vaultPath) {
@@ -2205,13 +2205,13 @@ function renderLintPanel(): void {
 
   const structural = document.createElement('p');
   structural.className = 'recent-label';
-  structural.textContent = 'Structural check';
+  structural.textContent = ui('health.structural');
   lintBodyEl.appendChild(structural);
 
   if (issues.length === 0) {
     const clean = document.createElement('p');
     clean.className = 'lint-clean';
-    clean.textContent = 'No issues. Clean copy.';
+    clean.textContent = ui('health.clean');
     lintBodyEl.appendChild(clean);
   } else {
     for (const page of vault.pages) {
@@ -2246,14 +2246,14 @@ function renderLintPanel(): void {
   health.className = 'health-section';
   const healthLabel = document.createElement('p');
   healthLabel.className = 'recent-label';
-  healthLabel.textContent = 'Advisory health check';
+  healthLabel.textContent = ui('health.advisory');
   const intro = document.createElement('p');
   intro.className = 'health-intro';
-  intro.textContent = 'Read-only review for contradictions, weak provenance, stale claims, and research gaps.';
+  intro.textContent = ui('health.intro');
   const run = document.createElement('button');
   run.type = 'button';
   run.className = 'btn-stamp aux';
-  run.textContent = healthCheckRunning ? 'Checking…' : healthReport ? 'Run again' : 'Run health check';
+  run.textContent = healthCheckRunning ? ui('health.running') : healthReport ? ui('health.runAgain') : ui('health.run');
   run.disabled = healthCheckRunning;
   run.addEventListener('click', () => void runHealthCheck());
   health.append(healthLabel, intro, run);
@@ -2487,7 +2487,7 @@ function openProfileDefinition() {
 function updateProfileToolsAvailability(): void {
   const available = currentVault !== null;
   opProfileToolsEl.hidden = !available;
-  opProfileToolsEl.title = available ? 'Run tools from Eva’s profile library' : '';
+  opProfileToolsEl.title = available ? ui('tool.menu') : '';
 }
 
 function setProfileToolsError(message: string | null): void {
