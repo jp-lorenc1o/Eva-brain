@@ -47,11 +47,18 @@ To cut a release, bump the version in `apps/desktop/src-tauri/tauri.conf.json`
 and push a matching tag.
 
 **The app is not code-signed or notarized** (that requires an Apple Developer
-account and is a known, deliberate gap for now). On first launch macOS will
-warn that it "could not verify" Eva: right-click `Eva.app` and choose **Open**
-once, or run `xattr -d com.apple.quarantine /Applications/Eva.app`. The
-released app still needs Node.js and a signed-in agent CLI on your Mac, per
-the section below.
+account and is a known, deliberate gap for now). Browsers tag downloads with
+the quarantine attribute, and current macOS reports a quarantined unsigned
+app as *"Eva" is damaged and can't be opened* — right-click → Open does
+**not** get past this dialog. The app is not damaged; clear the quarantine
+once and it opens normally:
+
+```sh
+xattr -cr /Applications/Eva.app   # adjust the path if Eva lives elsewhere
+```
+
+The released app still needs Node.js and a signed-in agent CLI on your Mac,
+per the section below.
 
 **Node.js is a hard runtime dependency of the ingest gate**, not just of the
 build: the deterministic lint and the MCP navigation tools are Node scripts in

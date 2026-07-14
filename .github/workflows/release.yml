@@ -5,9 +5,10 @@
 #
 # KNOWN LIMITATION, ON PURPOSE: the app is NOT code-signed or notarized —
 # that requires an Apple Developer account, which is out of scope for now.
-# Anyone downloading the .dmg will hit Gatekeeper's "Apple could not verify
-# this app" warning and must right-click the app and choose Open once (or
-# clear quarantine: xattr -d com.apple.quarantine /Applications/Eva.app).
+# Browsers quarantine downloads, and current macOS reports a quarantined
+# unsigned app as "damaged and can't be opened"; right-click → Open does NOT
+# bypass that dialog. The real fix is clearing the quarantine attribute:
+#   xattr -cr /Applications/Eva.app
 # The release notes repeat this so nobody has to find out the hard way.
 
 name: release
@@ -79,7 +80,7 @@ jobs:
           if [ -z "$NOTES" ]; then NOTES=$(git log -1 --format=%s); fi
           printf '%s\n\n---\n\n%s\n' \
             "$NOTES" \
-            "This build is not code-signed or notarized. macOS will warn that it cannot verify the app: right-click Eva.app and choose Open once, or run \`xattr -d com.apple.quarantine /Applications/Eva.app\`. Eva also needs Node.js and a signed-in agent CLI (Codex CLI or Claude Code) on your Mac." \
+            "This build is not code-signed or notarized. Because your browser quarantines downloads, macOS will report the app as damaged and refuse to open it; right-click → Open does not help. The app is fine — clear the quarantine once with \`xattr -cr /Applications/Eva.app\` (adjust the path if Eva lives elsewhere) and it opens normally. Eva also needs Node.js and a signed-in agent CLI (Codex CLI or Claude Code) on your Mac." \
             > release-notes.md
           gh release create "$GITHUB_REF_NAME" Eva.dmg \
             --title "Eva $GITHUB_REF_NAME" \

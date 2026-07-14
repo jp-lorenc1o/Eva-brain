@@ -38,9 +38,10 @@
           <a class="btn-stamp" data-i18n="cta.download" href="https://github.com/jp-lorenc1o/Eva-brain/releases/latest/download/Eva.dmg">Download for macOS</a>
           <a class="btn-quiet" data-i18n="cta.github" href="https://github.com/jp-lorenc1o/Eva-brain">View on GitHub</a>
         </div>
-        <p class="hero-note" data-i18n="hero.note">
-          V1 is unsigned, so macOS will warn on first open: right-click the
-          app and choose Open once.
+        <p class="hero-note" data-i18n-html="hero.note">
+          V1 is unsigned, so macOS will call the downloaded app
+          &#8220;damaged&#8221;. It is not: run
+          <code>xattr -cr /Applications/Eva.app</code> once and it opens.
         </p>
       </div>
 
