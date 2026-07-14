@@ -35,14 +35,9 @@
           knowledge on your Mac. Local files, local Git, your agent.
         </p>
         <div class="hero-actions">
-          <a class="btn-stamp" data-i18n="cta.download" href="https://github.com/jp-lorenc1o/Eva-brain/releases/latest/download/Eva.dmg">Download for macOS</a>
+          <a class="btn-stamp" id="download-cta" data-i18n="cta.download" href="https://github.com/jp-lorenc1o/Eva-brain/releases/latest/download/Eva.dmg">Download for macOS</a>
           <a class="btn-quiet" data-i18n="cta.github" href="https://github.com/jp-lorenc1o/Eva-brain">View on GitHub</a>
         </div>
-        <p class="hero-note" data-i18n-html="hero.note">
-          V1 is unsigned, so macOS will call the downloaded app
-          &#8220;damaged&#8221;. It is not: run
-          <code>xattr -cr /Applications/Eva.app</code> once and it opens.
-        </p>
       </div>
 
       <figure class="hero-graph vellum" data-i18n-aria="hero.graphAria" aria-label="A small Eva brain: pages rendered as ink nodes joined by links, with the selected page circled in red">
@@ -201,7 +196,36 @@
     </nav>
   </footer>
 
+  <!-- Download confirmation: the Gatekeeper explanation, impossible to miss -->
+  <div class="modal-overlay" id="download-modal" hidden>
+    <div class="modal-panel vellum" role="dialog" aria-modal="true"
+         aria-labelledby="download-modal-title" tabindex="-1">
+      <button type="button" class="modal-close" id="download-modal-close"
+              data-i18n-aria="modal.close" aria-label="Close">&#215;</button>
+      <h2 id="download-modal-title" data-i18n="modal.title">Before you download</h2>
+      <p data-i18n="modal.p1">
+        This build is not code-signed, so the first time you open it macOS
+        will say &#8220;Eva&#8221; is damaged and can&#8217;t be opened.
+        Nothing is damaged: that is the quarantine flag browsers put on
+        downloads.
+      </p>
+      <p data-i18n="modal.p2">
+        Move Eva to Applications, run this once, and it opens normally:
+      </p>
+      <div class="modal-code">
+        <code id="download-modal-cmd">xattr -cr /Applications/Eva.app</code>
+        <button type="button" class="btn-stamp modal-copy"
+                id="download-modal-copy" data-i18n="modal.copy">Copy</button>
+      </div>
+      <div class="modal-actions">
+        <a class="btn-stamp" id="download-modal-continue" data-i18n="modal.continue"
+           href="https://github.com/jp-lorenc1o/Eva-brain/releases/latest/download/Eva.dmg">Continue to download</a>
+      </div>
+    </div>
+  </div>
+
   <script src="i18n.js"></script>
   <script src="graph.js"></script>
+  <script src="modal.js"></script>
 </body>
 </html>
