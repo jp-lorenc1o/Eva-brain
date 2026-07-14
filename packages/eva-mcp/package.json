@@ -2,6 +2,7 @@
   "name": "eva-mcp",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "bin": {
     "eva-mcp": "./server.mjs"

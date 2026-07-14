@@ -1,9 +1,11 @@
 # Eva — LLM Brain
 
-Eva is a local-first desktop app for building a personal knowledge base with an
-LLM. Instead of repeatedly retrieving from raw documents at question time, Eva
-helps an agent maintain a durable, linked Markdown brain between the sources
-and the user.
+![License: MIT](https://img.shields.io/badge/license-MIT-cb181d)
+
+Eva is an open-source, local-first desktop app for building a personal
+knowledge base with an LLM. Instead of repeatedly retrieving from raw
+documents at question time, Eva helps an agent maintain a durable, linked
+Markdown brain between the sources and the user.
 
 ## Platform support
 
@@ -112,3 +114,12 @@ Dev-only hooks (used for automated verification, no effect in production
 builds): set `VITE_DEV_VAULT=/abs/path/to/vault` to auto-open a vault on
 launch, and `VITE_DEV_SELECT=<page-id>` to auto-select a node. The app then
 POSTs a render report to the vite dev server, which prints it to the terminal.
+
+## License and contributing
+
+Eva is open source under the [MIT License](LICENSE).
+
+Issues and pull requests are welcome. Two things to know before contributing:
+the V1 scope is deliberately macOS-only (see [AGENTS.md](AGENTS.md)), and
+changes should keep the test suites green — `npm test` for wiki-lib and
+`cargo test` in `apps/desktop/src-tauri` for the review-gate and vault logic.
