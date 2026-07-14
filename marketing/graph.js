@@ -14,6 +14,8 @@
     summary: '#8c6a4f',
     analysis: '#7c5b78',
   };
+  // Fallbacks only; the live labels come from i18n.js (legend.* keys), which
+  // reuses the app's translated page-type names in all ten languages.
   var TYPE_LABELS = {
     index: 'Index',
     entity: 'Entity',
@@ -136,14 +138,20 @@
   });
 
   if (legendEl) {
+    var translate = window.evaI18n
+      ? window.evaI18n.t
+      : function (key) { return TYPE_LABELS[key.replace('legend.', '')]; };
     Object.keys(TYPE_COLORS).forEach(function (type) {
       var key = document.createElement('span');
       key.className = 'key';
       var dot = document.createElement('span');
       dot.className = 'type-dot';
       dot.style.setProperty('--dot', TYPE_COLORS[type]);
+      var label = document.createElement('span');
+      label.setAttribute('data-i18n', 'legend.' + type);
+      label.textContent = translate('legend.' + type);
       key.appendChild(dot);
-      key.appendChild(document.createTextNode(TYPE_LABELS[type]));
+      key.appendChild(label);
       legendEl.appendChild(key);
     });
   }

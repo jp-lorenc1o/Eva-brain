@@ -17,7 +17,10 @@
       <img src="eva-mark.png" alt="" width="40" height="40" />
       <span>Eva</span>
     </a>
-    <span class="platform-note">for macOS</span>
+    <div class="head-side">
+      <span class="platform-note" data-i18n="head.platform">for macOS</span>
+      <select id="lang-picker" class="lang-picker" data-i18n-aria="head.language" aria-label="Language"></select>
+    </div>
   </header>
 
   <main id="top">
@@ -25,20 +28,21 @@
     <!-- Hero: copy beside a live recreation of the app's graph surface -->
     <section class="hero">
       <div class="hero-copy">
-        <p class="kicker">LLM Brain</p>
-        <h1>The brain your&nbsp;AI maintains.</h1>
-        <p class="hero-sub">
+        <p class="kicker" data-i18n="hero.kicker">LLM Brain</p>
+        <h1 data-i18n="hero.title">The brain your&nbsp;AI maintains.</h1>
+        <p class="hero-sub" data-i18n="hero.sub">
           Eva turns curated sources into a maintained, interlinked body of
           knowledge on your Mac. Local files, local Git, your agent.
         </p>
         <div class="hero-actions">
-          <a class="btn-stamp" href="https://github.com/jp-lorenc1o/Eva-brain">View on GitHub</a>
-          <a class="btn-quiet" href="https://github.com/jp-lorenc1o/Eva-brain/blob/main/docs/EVA_BRAIN_STANDARD.md">Read the Brain Standard</a>
+          <a class="btn-stamp" data-i18n="cta.github" href="https://github.com/jp-lorenc1o/Eva-brain">View on GitHub</a>
+          <a class="btn-quiet" data-i18n="cta.standard" href="https://github.com/jp-lorenc1o/Eva-brain/blob/main/docs/EVA_BRAIN_STANDARD.md">Read the Brain Standard</a>
         </div>
       </div>
 
-      <figure class="hero-graph vellum" aria-label="A small Eva brain: pages rendered as ink nodes joined by links, with the selected page circled in red">
+      <figure class="hero-graph vellum" data-i18n-aria="hero.graphAria" aria-label="A small Eva brain: pages rendered as ink nodes joined by links, with the selected page circled in red">
         <svg id="brain" viewBox="0 0 720 540" role="img"
+             data-i18n-aria="hero.graphAria"
              aria-label="Interactive graph of linked knowledge pages"></svg>
         <figcaption class="graph-legend" id="legend"></figcaption>
       </figure>
@@ -46,20 +50,20 @@
 
     <!-- What it is / how it differs from RAG -->
     <section class="prose-block">
-      <h2>Retrieval re&#8209;reads. Eva remembers.</h2>
-      <p>
+      <h2 data-i18n="rag.title">Retrieval re&#8209;reads. Eva remembers.</h2>
+      <p data-i18n="rag.p1">
         A retrieval pipeline answers every question from scratch: chunk the
         documents, fetch what looks relevant, synthesize, discard. The work of
         understanding is thrown away the moment the answer is delivered.
       </p>
-      <p>
+      <p data-i18n="rag.p2">
         Eva's agent writes what it learns into Markdown pages that link to
         each other: entities, concepts, source summaries, saved analyses.
         Every ingest and every answer worth keeping improves the same
         artifact, so the next question starts further ahead instead of
         starting over.
       </p>
-      <p>
+      <p data-i18n="rag.p3">
         The brain is a plain folder. No vector database, no embeddings to
         rebuild. You can open it in Obsidian or any text editor, and it stays
         readable without Eva.
@@ -68,11 +72,11 @@
 
     <!-- The four real operations -->
     <section class="ops" id="operations">
-      <h2>Four operations, one review gate.</h2>
+      <h2 data-i18n="ops.title">Four operations, one review gate.</h2>
       <div class="ops-grid">
         <article class="op-cell vellum">
-          <h3>Ingest</h3>
-          <p>
+          <h3 data-i18n="ops.ingest.title">Ingest</h3>
+          <p data-i18n-html="ops.ingest.body">
             Pick a source. Eva copies it into <code>raw/</code>, commits it,
             and the agent reads the existing wiki before writing: merging into
             pages that already exist, linking new ones from the index, citing
@@ -80,13 +84,13 @@
             worktree.
           </p>
           <p class="chip-row">
-            <span class="chip chip-hold">held: 1 deletion</span>
-            <span class="chip">deletions never auto&#8209;merge</span>
+            <span class="chip chip-hold" data-i18n="ops.ingest.chip1">held: 1 deletion</span>
+            <span class="chip" data-i18n="ops.ingest.chip2">deletions never auto&#8209;merge</span>
           </p>
         </article>
         <article class="op-cell vellum">
-          <h3>Query</h3>
-          <p>
+          <h3 data-i18n="ops.query.title">Query</h3>
+          <p data-i18n="ops.query.body">
             Ask the maintained brain, not a pile of chunks. Answers cite the
             exact pages and raw sources that support them. Saving a useful
             answer proposes a reviewable analysis page; asking alone never
@@ -97,8 +101,8 @@
           </p>
         </article>
         <article class="op-cell vellum">
-          <h3>Health</h3>
-          <p>
+          <h3 data-i18n="ops.health.title">Health</h3>
+          <p data-i18n="ops.health.body">
             Deterministic lint catches broken links, orphan pages, and missing
             provenance. An optional agent pass, strictly read&#8209;only, flags
             contradictions, stale claims, and coverage gaps. It reports; it
@@ -109,17 +113,17 @@
           </p>
         </article>
         <article class="op-cell vellum">
-          <h3>Tools</h3>
-          <p>
+          <h3 data-i18n="ops.tools.title">Tools</h3>
+          <p data-i18n="ops.tools.body">
             Turn the open brain into flashcards, a practice exam, an evidence
             map, a decision brief. Every tool is read&#8209;only and
             source&#8209;cited, and saving a result goes through the same
             review gate as everything else.
           </p>
           <p class="chip-row">
-            <span class="chip">flashcards</span>
-            <span class="chip">evidence map</span>
-            <span class="chip">practice exam</span>
+            <span class="chip" data-i18n="ops.tools.chip1">flashcards</span>
+            <span class="chip" data-i18n="ops.tools.chip2">evidence map</span>
+            <span class="chip" data-i18n="ops.tools.chip3">practice exam</span>
           </p>
         </article>
       </div>
@@ -127,48 +131,48 @@
 
     <!-- Trust properties, all true of the current codebase -->
     <section class="trust" id="trust">
-      <h2>Local by design.</h2>
+      <h2 data-i18n="trust.title">Local by design.</h2>
       <dl class="trust-grid">
         <div class="trust-item">
-          <dt>A folder, not a service</dt>
-          <dd>
+          <dt data-i18n="trust.folder.dt">A folder, not a service</dt>
+          <dd data-i18n-html="trust.folder.dd">
             Brains are Markdown folders in <code>~/Documents/Eva/Brains</code>.
             No account, no cloud database, nothing to sign in to.
           </dd>
         </div>
         <div class="trust-item">
-          <dt>Bring your own agent</dt>
-          <dd>
+          <dt data-i18n="trust.agent.dt">Bring your own agent</dt>
+          <dd data-i18n="trust.agent.dd">
             Eva drives the Codex CLI or Claude Code already signed in on your
             Mac. It never stores API keys or credentials.
           </dd>
         </div>
         <div class="trust-item">
-          <dt>Git is the review gate</dt>
-          <dd>
+          <dt data-i18n="trust.git.dt">Git is the review gate</dt>
+          <dd data-i18n="trust.git.dd">
             Every brain is its own local repository. Agent work lands on a
             branch, and deletions or new structural issues always wait for
             your explicit accept or reject.
           </dd>
         </div>
         <div class="trust-item">
-          <dt><code>raw/</code> is immutable</dt>
-          <dd>
+          <dt data-i18n-html="trust.raw.dt"><code>raw/</code> is immutable</dt>
+          <dd data-i18n="trust.raw.dd">
             Agents may read your original sources but never edit, move, or
             delete them. Eva verifies this on the working tree and on the
             committed diff before anything can merge.
           </dd>
         </div>
         <div class="trust-item">
-          <dt>Nothing leaves your Mac</dt>
-          <dd>
+          <dt data-i18n="trust.local.dt">Nothing leaves your Mac</dt>
+          <dd data-i18n="trust.local.dd">
             Eva never creates a remote and never pushes. Backing up or sharing
             a brain is a choice you make outside Eva.
           </dd>
         </div>
         <div class="trust-item">
-          <dt>V1, macOS only</dt>
-          <dd>
+          <dt data-i18n="trust.v1.dt">V1, macOS only</dt>
+          <dd data-i18n="trust.v1.dd">
             Built and tested on macOS alone; other platforms are a future
             decision, not a checkbox. Today you build it from source with
             Node.js, Rust, and a signed&#8209;in agent CLI.
@@ -182,14 +186,15 @@
   <footer class="site-foot">
     <div class="foot-brand">
       <img src="eva-mark.png" alt="" width="28" height="28" />
-      <span>Eva is a local-first LLM brain for macOS.</span>
+      <span data-i18n="foot.tag">Eva is a local-first LLM brain for macOS.</span>
     </div>
     <nav class="foot-links" aria-label="Project links">
-      <a href="https://github.com/jp-lorenc1o/Eva-brain">View on GitHub</a>
-      <a href="https://github.com/jp-lorenc1o/Eva-brain/blob/main/README.md">README</a>
+      <a data-i18n="foot.github" href="https://github.com/jp-lorenc1o/Eva-brain">View on GitHub</a>
+      <a data-i18n="foot.readme" href="https://github.com/jp-lorenc1o/Eva-brain/blob/main/README.md">README</a>
     </nav>
   </footer>
 
+  <script src="i18n.js"></script>
   <script src="graph.js"></script>
 </body>
 </html>

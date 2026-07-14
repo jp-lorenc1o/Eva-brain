@@ -1,11 +1,13 @@
 # Eva marketing site
 
-A static, dependency-free landing page for Eva. Plain HTML/CSS plus one
-vanilla-JS file that renders the live graph hero; fonts are self-hosted
-copies of the exact families the desktop app uses (Fragment Mono,
-Instrument Sans Variable, Newsreader Variable). Design tokens are lifted
-verbatim from `apps/desktop/src/style.css` so the page stays in lockstep
-with the app's proof-copy look.
+A static, dependency-free landing page for Eva. Plain HTML/CSS plus two
+vanilla-JS files: the live graph hero, and a small i18n layer covering the
+same ten interface languages as the app (system-language default, saved
+choice, `?lang=` override), reusing the app's established vocabulary per
+locale. Fonts are self-hosted copies of the exact families the desktop app
+uses (Fragment Mono, Instrument Sans Variable, Newsreader Variable). Design
+tokens are lifted verbatim from `apps/desktop/src/style.css` so the page
+stays in lockstep with the app's proof-copy look.
 
 ## Deploy
 

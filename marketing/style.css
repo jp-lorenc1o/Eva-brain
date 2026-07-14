@@ -125,12 +125,39 @@ main {
   mix-blend-mode: multiply;
 }
 
+.head-side {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .platform-note {
   font-family: var(--font-data);
   font-size: 11px;
   letter-spacing: 0.08em;
   color: var(--ink-dim);
 }
+
+/* Language choice: the same quiet mono chrome the app's settings use */
+.lang-picker {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 5px 26px 5px 12px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%2375726e'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.lang-picker:hover { border-color: var(--ink-dim); }
+.lang-picker:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 
 /* Hero ---------------------------------------------------------------------- */
 .hero {
@@ -465,6 +492,18 @@ main {
     padding: 36px 0 52px;
   }
   .ops-grid, .trust-grid { grid-template-columns: 1fr; }
+}
+
+/* CJK typography: the Latin display tracking reads wrong on han/kana/hangul,
+   and Newsreader has no CJK glyphs, so the system serif steps in. ---------------- */
+:lang(ja) .hero h1, :lang(ko) .hero h1, :lang(zh-Hans) .hero h1, :lang(zh-Hant) .hero h1,
+:lang(ja) h2, :lang(ko) h2, :lang(zh-Hans) h2, :lang(zh-Hant) h2 {
+  letter-spacing: 0;
+  line-height: 1.24;
+}
+
+:lang(ja) .hero-sub, :lang(ko) .hero-sub, :lang(zh-Hans) .hero-sub, :lang(zh-Hant) .hero-sub {
+  line-height: 1.75;
 }
 
 /* Motion discipline: the graph settles instantly and holds still ------------------ */
