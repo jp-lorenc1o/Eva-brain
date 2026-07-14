@@ -236,6 +236,15 @@ main {
 .btn-quiet:hover { color: var(--ink); border-color: var(--ink-dim); }
 .btn-quiet:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 
+/* Honest note under the download action: plain tone, not fine print */
+.hero-note {
+  margin: 14px 0 0;
+  max-width: 44ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
 /* The live brain -------------------------------------------------------------
    Same marks as the app: ink cores with a paper stroke and graphite lift,
    quiet grey links, red dashed ring on the selected page. */
