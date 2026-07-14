@@ -38,6 +38,21 @@ npm test             # wiki-lib unit tests (vitest)
 npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ```
 
+## Releases and installing
+
+Tagged versions (`v*.*.*`) are built by GitHub Actions on macOS and published
+as GitHub Releases with the `.dmg` attached; the newest build is always at
+[releases/latest/download/Eva.dmg](https://github.com/jp-lorenc1o/Eva-brain/releases/latest/download/Eva.dmg).
+To cut a release, bump the version in `apps/desktop/src-tauri/tauri.conf.json`
+and push a matching tag.
+
+**The app is not code-signed or notarized** (that requires an Apple Developer
+account and is a known, deliberate gap for now). On first launch macOS will
+warn that it "could not verify" Eva: right-click `Eva.app` and choose **Open**
+once, or run `xattr -d com.apple.quarantine /Applications/Eva.app`. The
+released app still needs Node.js and a signed-in agent CLI on your Mac, per
+the section below.
+
 **Node.js is a hard runtime dependency of the ingest gate**, not just of the
 build: the deterministic lint and the MCP navigation tools are Node scripts in
 `packages/eva-mcp`, and ingest or saving an analysis refuses to run without

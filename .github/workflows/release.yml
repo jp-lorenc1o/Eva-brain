@@ -1,0 +1,86 @@
+# Builds and publishes a GitHub Release with the macOS .dmg when a version
+# tag (v*.*.*) is pushed. Intentional tags only — never plain pushes to main.
+#
+# Scope: macOS only, matching the documented V1 platform scope (AGENTS.md).
+#
+# KNOWN LIMITATION, ON PURPOSE: the app is NOT code-signed or notarized —
+# that requires an Apple Developer account, which is out of scope for now.
+# Anyone downloading the .dmg will hit Gatekeeper's "Apple could not verify
+# this app" warning and must right-click the app and choose Open once (or
+# clear quarantine: xattr -d com.apple.quarantine /Applications/Eva.app).
+# The release notes repeat this so nobody has to find out the hard way.
+
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust (stable)
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      # Runs vite build + scripts/bundle-tools.mjs (staging the eva-mcp Node
+      # tools as an app resource) via tauri.conf.json's beforeBuildCommand.
+      - name: Build Eva.app and DMG
+        run: npm run tauri build
+
+      # The lint gate and MCP server are Node scripts shipped inside the app;
+      # a DMG without them would install an Eva that cannot ingest. Fail the
+      # release if the staged tools are missing from the actual disk image.
+      - name: Verify bundled Node tools inside the DMG
+        run: |
+          set -euo pipefail
+          DMG=$(ls apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg)
+          echo "Inspecting $DMG"
+          MOUNT=$(hdiutil attach "$DMG" -nobrowse -readonly | awk -F'\t' 'END {print $NF}')
+          RES="$MOUNT/Eva.app/Contents/Resources/resources/eva-mcp"
+          test -f "$RES/lint-cli.mjs"
+          test -f "$RES/server.mjs"
+          test -f "$RES/vault-io.mjs"
+          test -f "$RES/node_modules/wiki-lib/dist/index.js"
+          test -d "$RES/node_modules/@modelcontextprotocol"
+          test -d "$RES/node_modules/zod"
+          echo "Bundled Node tools verified."
+          hdiutil detach "$MOUNT"
+
+      # A stable asset name means the landing page can always link to
+      # releases/latest/download/Eva.dmg without per-release updates.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          DMG=$(ls apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg)
+          cp "$DMG" Eva.dmg
+          NOTES=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")
+          if [ -z "$NOTES" ]; then NOTES=$(git log -1 --format=%s); fi
+          printf '%s\n\n---\n\n%s\n' \
+            "$NOTES" \
+            "This build is not code-signed or notarized. macOS will warn that it cannot verify the app: right-click Eva.app and choose Open once, or run \`xattr -d com.apple.quarantine /Applications/Eva.app\`. Eva also needs Node.js and a signed-in agent CLI (Codex CLI or Claude Code) on your Mac." \
+            > release-notes.md
+          gh release create "$GITHUB_REF_NAME" Eva.dmg \
+            --title "Eva $GITHUB_REF_NAME" \
+            --notes-file release-notes.md
