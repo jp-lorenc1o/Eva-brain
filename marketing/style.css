@@ -444,6 +444,30 @@ main {
   color: #4a4840;
 }
 
+/* See it in action: real app footage, on its own vellum sheet ------------------ */
+.demo { padding: 40px 0 64px; border-top: 1px solid var(--hairline); }
+
+.demo-lead {
+  max-width: 62ch;
+  margin: 0 0 24px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #4a4840;
+}
+
+.demo-figure {
+  margin: 0;
+  padding: 10px;
+  max-width: 720px;
+}
+
+.demo-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
 /* Operations ------------------------------------------------------------------ */
 .ops { padding: 40px 0 64px; border-top: 1px solid var(--hairline); }
 

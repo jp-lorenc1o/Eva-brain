@@ -7,6 +7,11 @@ knowledge base with an LLM. Instead of repeatedly retrieving from raw
 documents at question time, Eva helps an agent maintain a durable, linked
 Markdown brain between the sources and the user.
 
+![Eva's graph view: a section cluster expands into its pages, then a summary page is selected, fanning red links to every concept it supports while the rest of the map dims](marketing/eva-demo.gif)
+
+*Navigating a real 117-page brain: a section cluster expands into its pages,
+then selecting a source summary highlights every concept it supports.*
+
 ## Platform support
 
 Eva V1 intentionally targets macOS only. Tauri itself supports Windows and
