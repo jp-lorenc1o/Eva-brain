@@ -3,8 +3,11 @@
 #
 # Scope: macOS only, matching the documented V1 platform scope (AGENTS.md).
 #
-# KNOWN LIMITATION, ON PURPOSE: the app is NOT code-signed or notarized —
-# that requires an Apple Developer account, which is out of scope for now.
+# KNOWN LIMITATION, ON PURPOSE: the app is NOT code-signed or notarized.
+# This is a deliberate, standing V1 decision (see AGENTS.md), not a stopgap:
+# signing requires the $99/year Apple Developer Program, which is not
+# justified for a personal project at this stage. Do not add signing steps
+# here unless that decision is explicitly revisited.
 # Browsers quarantine downloads, and current macOS reports a quarantined
 # unsigned app as "damaged and can't be opened"; right-click → Open does NOT
 # bypass that dialog. The real fix is clearing the quarantine attribute:

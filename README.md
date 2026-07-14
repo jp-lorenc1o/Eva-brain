@@ -46,12 +46,15 @@ as GitHub Releases with the `.dmg` attached; the newest build is always at
 To cut a release, bump the version in `apps/desktop/src-tauri/tauri.conf.json`
 and push a matching tag.
 
-**The app is not code-signed or notarized** (that requires an Apple Developer
-account and is a known, deliberate gap for now). Browsers tag downloads with
-the quarantine attribute, and current macOS reports a quarantined unsigned
-app as *"Eva" is damaged and can't be opened* — right-click → Open does
-**not** get past this dialog. The app is not damaged; clear the quarantine
-once and it opens normally:
+**The app is not code-signed or notarized, and staying unsigned is a
+deliberate V1 decision, not a stopgap.** Signing and notarization require
+Apple Developer Program membership at $99/year; for a personal project at
+this stage that cost is not justified. Revisiting it is a real decision to
+make consciously later, not an assumed next step. The practical consequence:
+browsers tag downloads with the quarantine attribute, and current macOS
+reports a quarantined unsigned app as *"Eva" is damaged and can't be
+opened* — right-click → Open does **not** get past this dialog. The app is
+not damaged; clear the quarantine once and it opens normally:
 
 ```sh
 xattr -cr /Applications/Eva.app   # adjust the path if Eva lives elsewhere
