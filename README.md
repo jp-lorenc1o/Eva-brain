@@ -89,8 +89,9 @@ quarantine attribute. If it does have one, check how the app was transferred
 before removing it. Open the `bundle/macos` folder in Finder and drag the
 verified `Eva.app` to `/Applications`.
 
-The locally built app still needs Node.js and a signed-in Codex CLI or Claude
-Code at runtime, as described below.
+The locally built app still needs Node.js at runtime, plus either a signed-in
+Codex CLI or Claude Code, or the account-free OpenCode (local) runtime, as
+described below.
 
 ## Releases and installing
 
@@ -114,8 +115,9 @@ not damaged; clear the quarantine once and it opens normally:
 xattr -cr /Applications/Eva.app   # adjust the path if Eva lives elsewhere
 ```
 
-The released app still needs Node.js and a signed-in agent CLI on your Mac,
-per the section below.
+The released app still needs Node.js on your Mac, plus either a signed-in
+agent CLI or the account-free OpenCode (local) runtime, per the sections
+below.
 
 **Node.js is a hard runtime dependency of the ingest gate**, not just of the
 build: the deterministic lint and the MCP navigation tools are Node scripts in
@@ -135,10 +137,10 @@ Choose **New brain** from the opening screen and name the knowledge project.
 The setup sheet asks for a Brain Profile, working language, AI runtime, and
 optional purpose; Eva stores that profile and its modules in `eva.json` and
 `EVA.md`, creates a tailored linked starter page in
-`~/Documents/Eva/Brains`, then opens the graph. Choose Codex or Claude Code;
-Eva uses the CLI already signed in on the computer and never stores API keys or
-credentials. Eva uses Git only locally to make reviews and undoable history
-possible; it needs no GitHub account, remote, or Git identity. Select
+`~/Documents/Eva/Brains`, then opens the graph. For **Codex** or **Claude
+Code**, Eva uses the CLI already signed in on the computer and never stores API
+keys or credentials. Eva uses Git only locally to make reviews and undoable
+history possible; it needs no GitHub account, remote, or Git identity. Select
 **Ingest** to add the first source. Select **Query** to ask the maintained
 brain a question; useful answers can be saved as a reviewable analysis page.
 Use **Open brain** to choose from Eva's managed brain library. **Import a
@@ -149,6 +151,32 @@ Use **Manage brains** to see each local folder and update its Brain Profile,
 working language, AI runtime, or purpose. Eva records a profile change in that
 brain's local Git history; it does not create an account, remote, or cloud
 copy.
+
+## OpenCode (local, free — no account needed)
+
+The third runtime choice, **OpenCode (local)**, is a zero-setup path: pick it
+and Eva makes local AI work with no account, no API key, and no terminal. The
+first time you choose it, Eva installs [Ollama](https://ollama.com), downloads a
+small curated model, configures it, and installs the
+[OpenCode](https://opencode.ai) CLI — each step with visible progress. After
+that, ingest, query, health, and tools run entirely on your Mac against a local
+model through the same review gate as the other runtimes.
+
+Be aware of the trade-off. This path is **free and fully private** — nothing
+leaves your machine — but it is not the same as the cloud-backed options:
+
+- **First-time download is several GB** (the model plus Ollama and OpenCode).
+  You need the free disk space for it, and enough RAM to run a small model
+  comfortably (roughly 8 GB and up; more headroom is better). The model is
+  reused across brains, so the download is one-time.
+- **Responses are slower and generally less capable** than the paid cloud
+  models behind Codex and Claude Code. A local few-billion-parameter model does
+  a competent job of the structured ingest/query work but will not match a
+  frontier cloud model on hard reasoning or nuance. Choose it when free and
+  private matters more than maximum capability.
+- Everything Eva's other runtimes guarantee still holds: `raw/` stays
+  immutable, deletions and new lint issues wait for your review, and nothing is
+  ever pushed anywhere.
 
 ## Profile-aware work
 

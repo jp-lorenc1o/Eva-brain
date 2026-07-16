@@ -422,7 +422,10 @@ function selectedNewVaultProfile(): BrainProfileId {
   return profileDefinition(newVaultProfileEl.value).id;
 }
 
-type AgentChoice = 'codex' | 'claude';
+// OpenCode is the local, account-free runtime: it drives a fixed curated model
+// on the person's Mac, so it exposes no model/effort choice (those controls are
+// hidden when it is selected).
+type AgentChoice = 'codex' | 'claude' | 'opencode';
 
 interface AgentModelOption {
   value: string;
@@ -442,11 +445,13 @@ const AGENT_MODELS: Record<AgentChoice, AgentModelOption[]> = {
     { value: 'opus', label: 'Opus' },
     { value: 'sonnet', label: 'Sonnet' },
   ],
+  opencode: [],
 };
 
 const AGENT_EFFORTS: Record<AgentChoice, string[]> = {
   codex: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  opencode: [],
 };
 
 const EFFORT_TRANSLATIONS: Record<string, TranslationKey> = {
@@ -461,7 +466,15 @@ const EFFORT_TRANSLATIONS: Record<string, TranslationKey> = {
 };
 
 function agentChoice(value: string): AgentChoice {
-  return value === 'claude' ? 'claude' : 'codex';
+  if (value === 'claude') return 'claude';
+  if (value === 'opencode') return 'opencode';
+  return 'codex';
+}
+
+/** Hide the model/effort controls for OpenCode (it runs a fixed local model). */
+function toggleAgentPreferences(modelsEl: HTMLElement, agent: AgentChoice): void {
+  const block = modelsEl.closest<HTMLElement>('.agent-preferences');
+  if (block) block.hidden = agent === 'opencode';
 }
 
 function selectedAgentModel(modelsEl: HTMLElement): string {
@@ -510,23 +523,15 @@ function populateAgentPreferences(
 }
 
 function updateNewVaultAgentPreferences(selectedModel?: string): void {
-  populateAgentPreferences(
-    agentChoice(selectedNewVaultAgent()),
-    newVaultModelsEl,
-    'new-vault-model',
-    newVaultEffortEl,
-    selectedModel,
-  );
+  const agent = agentChoice(selectedNewVaultAgent());
+  populateAgentPreferences(agent, newVaultModelsEl, 'new-vault-model', newVaultEffortEl, selectedModel);
+  toggleAgentPreferences(newVaultModelsEl, agent);
 }
 
 function updateBrainManagerAgentPreferences(selectedModel?: string): void {
-  populateAgentPreferences(
-    agentChoice(selectedBrainManagerAgent()),
-    brainManagerModelsEl,
-    'brain-manager-model',
-    brainManagerEffortEl,
-    selectedModel,
-  );
+  const agent = agentChoice(selectedBrainManagerAgent());
+  populateAgentPreferences(agent, brainManagerModelsEl, 'brain-manager-model', brainManagerEffortEl, selectedModel);
+  toggleAgentPreferences(brainManagerModelsEl, agent);
 }
 
 function updateNewVaultProfileFrame(): void {
@@ -1458,6 +1463,9 @@ async function saveBrainManagerSettings(): Promise<void> {
       updateProfileToolsAvailability();
     }
     setBrainManagerStatus('Saved to this brain', false);
+    // Switching a brain to the local runtime: make sure its model stack is
+    // installed now rather than failing at first ingest.
+    if (agent === 'opencode') await ensureOpencodeReady();
   } catch (error) {
     setBrainManagerError(String(error));
     setBrainManagerStatus(null);
@@ -1576,6 +1584,9 @@ async function createNewVault(): Promise<void> {
       purpose: newVaultPurposeEl.value.trim(),
     });
     closeNewVault();
+    // A local-runtime brain needs its model stack before it can ingest. Run the
+    // one-time setup now, with progress, so the brain is actually usable.
+    if (selectedNewVaultAgent() === 'opencode') await ensureOpencodeReady();
     await openVault(root);
     setIngestStatus('Brain created · add your first source with Ingest', false);
   } catch (error) {
@@ -2522,7 +2533,7 @@ function syncOpButtons(): void {
 }
 
 function operationModalIsOpen(): boolean {
-  return !newVaultEl.hidden || !queryPanelEl.hidden || !profileToolsEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden || !appSettingsEl.hidden;
+  return !newVaultEl.hidden || !queryPanelEl.hidden || !profileToolsEl.hidden || !lintPanelEl.hidden || !logPanelEl.hidden || !reviewEl.hidden || !brainManagerEl.hidden || !appSettingsEl.hidden || !document.getElementById('opencode-setup')!.hidden;
 }
 
 function syncOperationModal(): void {
@@ -3450,6 +3461,75 @@ void listen('ingest:rejected', async (event) => {
   forwardDev('rejected', event.payload);
   if (currentVault) await openVault(currentVault); // pick up the log entry
 });
+
+/* OpenCode local runtime: one-time zero-setup flow -------------------------- */
+type SetupStep = 'ollama' | 'server' | 'model' | 'derived-model' | 'opencode';
+interface SetupEvent { step: SetupStep; status: 'working' | 'done'; detail: string }
+
+const SETUP_STEP_ORDER: SetupStep[] = ['ollama', 'server', 'model', 'derived-model', 'opencode'];
+const opencodeSetupEl = () => document.getElementById('opencode-setup') as HTMLElement;
+const opencodeStepsEl = () => document.getElementById('opencode-setup-steps') as HTMLElement;
+const opencodeSetupErrorEl = () => document.getElementById('opencode-setup-error') as HTMLElement;
+
+function renderSetupStep(evt: SetupEvent): void {
+  const list = opencodeStepsEl();
+  let row = document.getElementById(`setup-step-${evt.step}`);
+  if (!row) {
+    row = document.createElement('li');
+    row.id = `setup-step-${evt.step}`;
+    row.className = 'opencode-step';
+    // Keep steps in a stable order regardless of event arrival.
+    const idx = SETUP_STEP_ORDER.indexOf(evt.step);
+    const after = SETUP_STEP_ORDER.slice(idx + 1)
+      .map((s) => document.getElementById(`setup-step-${s}`))
+      .find(Boolean);
+    list.insertBefore(row, after ?? null);
+  }
+  row.dataset.status = evt.status;
+  row.textContent = `${evt.status === 'done' ? '✓' : '…'} ${evt.detail}`;
+}
+
+void listen<SetupEvent>('opencode:setup', (event) => renderSetupStep(event.payload));
+
+/** Run the one-time OpenCode setup, showing live progress. Resolves true on
+ *  success. If already set up, returns immediately without showing the modal. */
+async function ensureOpencodeReady(): Promise<boolean> {
+  if (await invoke<boolean>('opencode_ready_check').catch(() => false)) return true;
+  opencodeStepsEl().innerHTML = '';
+  opencodeSetupErrorEl().hidden = true;
+  (document.getElementById('opencode-setup-close') as HTMLButtonElement).hidden = true;
+  (document.getElementById('opencode-setup-retry') as HTMLButtonElement).hidden = true;
+  opencodeSetupEl().hidden = false;
+  syncOperationModal();
+  const ok = await runOpencodeSetup();
+  return ok;
+}
+
+async function runOpencodeSetup(): Promise<boolean> {
+  opencodeSetupErrorEl().hidden = true;
+  (document.getElementById('opencode-setup-retry') as HTMLButtonElement).hidden = true;
+  try {
+    await invoke('opencode_setup');
+    // Success: let the person see the finished checklist, then continue.
+    (document.getElementById('opencode-setup-close') as HTMLButtonElement).hidden = false;
+    return true;
+  } catch (error) {
+    const err = opencodeSetupErrorEl();
+    err.textContent = String(error);
+    err.hidden = false;
+    (document.getElementById('opencode-setup-retry') as HTMLButtonElement).hidden = false;
+    (document.getElementById('opencode-setup-close') as HTMLButtonElement).hidden = false;
+    return false;
+  }
+}
+
+function closeOpencodeSetup(): void {
+  opencodeSetupEl().hidden = true;
+  syncOperationModal();
+}
+
+document.getElementById('opencode-setup-close')!.addEventListener('click', closeOpencodeSetup);
+document.getElementById('opencode-setup-retry')!.addEventListener('click', () => void runOpencodeSetup());
 
 /* Wiring -------------------------------------------------------------------- */
 document.getElementById('go-home')!.addEventListener('click', goHome);

@@ -87,22 +87,41 @@ analysis decision.
 ## Runtime boundary
 
 The vault format is agent-neutral. The current desktop implementation supports
-Codex CLI and Claude Code, with the chosen runtime recorded in the brain's
-local `EVA.md` profile. Claude uses Eva's read-only MCP navigation tools;
-Codex uses its sandboxed local filesystem tools. Both receive the same brain
-path, `EVA.md` contract, and worktree/review guarantees. Future runtimes must
+Codex CLI, Claude Code, and OpenCode (a local runtime driving a bundled Ollama
+model), with the chosen runtime recorded in the brain's local `EVA.md` profile.
+Claude and OpenCode use Eva's read-only MCP navigation tools; Codex uses its
+sandboxed local filesystem tools. All three receive the same brain path,
+`EVA.md` contract, and worktree/review guarantees. Future runtimes must
 preserve those guarantees and must not change the on-disk format.
 
-Both runtimes are isolated from the person's own agent configuration so that
+Every runtime is isolated from the person's own agent configuration so that
 unrelated global tools, rules, and servers never participate in a private
 brain: Codex runs with `--ephemeral --ignore-user-config --ignore-rules`, and
 Claude runs with `--strict-mcp-config` (only Eva's MCP server) and an empty
 `--setting-sources` (no user, project, or local settings, which also keeps
-user-scoped plugins and hooks out). One asymmetry remains: Claude Code always
-auto-discovers memory files, so a user-level `~/.claude/CLAUDE.md` is still
-read during Claude runs. The only flag that disables memory discovery also
-disables the locally signed-in CLI auth Eva depends on, so Eva accepts this
-gap and documents it here instead of hiding it.
+user-scoped plugins and hooks out). Two residual gaps remain, documented here
+rather than hidden:
+
+- Claude Code always auto-discovers memory files, so a user-level
+  `~/.claude/CLAUDE.md` is still read during Claude runs. The only flag that
+  disables memory discovery also disables the locally signed-in CLI auth Eva
+  depends on.
+- OpenCode has no clean "ignore my global config" flag. `--pure` disables
+  external plugins but also the Ollama provider (itself an external `@ai-sdk`
+  package), so it is unusable. The `OPENCODE_CONFIG`/`OPENCODE_CONFIG_DIR`
+  environment variables only *add* to the config merge chain — the user's
+  `~/.config/opencode/*` is still loaded and merged. Eva points
+  `OPENCODE_CONFIG_DIR` at an Eva-managed directory whose provider, model, and
+  permission config loads last (so it wins on conflicts), but a user's global
+  OpenCode config still merges in.
+
+Neither gap is a safety hole. The review gate, `raw/` immutability check, and
+protected-path verification apply to every runtime regardless of what config
+it loaded; a merged-in global tool cannot bypass them. For OpenCode, Eva
+additionally walls the run into the worktree with a `permission` config
+(`external_directory: deny`, and `write`/`edit`/`bash` denied entirely for the
+read-only Query, Health, and Tools operations), so a small local model that
+hallucinates an absolute path cannot write outside the brain.
 
 ## Privacy boundary
 

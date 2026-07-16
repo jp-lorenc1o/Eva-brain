@@ -30,7 +30,9 @@ fn main() {
             ingest::health_check_run,
             ingest::profile_tool_run,
             ingest::query_save,
-            ingest::query_decide
+            ingest::query_decide,
+            ingest::opencode_ready_check,
+            ingest::opencode_setup
         ])
         .run(tauri::generate_context!())
         .expect("error while running Eva");
