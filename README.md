@@ -43,6 +43,55 @@ npm test             # wiki-lib unit tests (vitest)
 npm run tauri dev    # launches the desktop app (requires Rust toolchain)
 ```
 
+## Build and install locally
+
+These instructions turn the source code in this checkout into an Eva app on
+your own Mac. Use them when you prefer to inspect and build the code yourself
+instead of trusting a prebuilt unsigned download. The process runs Eva's tests,
+creates the app and disk image locally, and gives the app an ad-hoc signature
+so you can check that the bundle has not changed before installation. It does
+not identify a trusted publisher or notarize the app.
+
+Install the locked dependencies, run both test suites, and build the local
+bundle:
+
+```sh
+npm ci
+npm test
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+APPLE_SIGNING_IDENTITY=- npm run tauri build
+```
+
+The build prints the exact artifact paths. On Apple Silicon they are normally
+under `apps/desktop/src-tauri/target/release/bundle/macos/Eva.app` and
+`apps/desktop/src-tauri/target/release/bundle/dmg/`. While Tauri creates the
+DMG, Finder may briefly show Eva beside an Applications shortcut so the build
+script can arrange the disk image. Leave that window alone until the terminal
+reports that the build has finished. Then record the source revision and
+verify the application bundle before installing it:
+
+```sh
+git rev-parse HEAD
+codesign --verify --deep --strict --verbose=2 \
+  apps/desktop/src-tauri/target/release/bundle/macos/Eva.app
+codesign --display --verbose=4 \
+  apps/desktop/src-tauri/target/release/bundle/macos/Eva.app
+xattr -p com.apple.quarantine \
+  apps/desktop/src-tauri/target/release/bundle/macos/Eva.app
+```
+
+A successful `codesign --verify` confirms that the bundle has not changed
+since it was signed. The display output for this local build says
+`Signature=adhoc` and has no Team Identifier: it does not identify a trusted
+publisher and is not a substitute for Developer ID signing or notarization.
+The `xattr` command normally reports that a directly built app has no
+quarantine attribute. If it does have one, check how the app was transferred
+before removing it. Open the `bundle/macos` folder in Finder and drag the
+verified `Eva.app` to `/Applications`.
+
+The locally built app still needs Node.js and a signed-in Codex CLI or Claude
+Code at runtime, as described below.
+
 ## Releases and installing
 
 Tagged versions (`v*.*.*`) are built by GitHub Actions on macOS and published
