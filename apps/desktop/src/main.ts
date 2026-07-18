@@ -1573,12 +1573,15 @@ async function createNewVault(): Promise<void> {
   }
   newVaultCreateEl.disabled = true;
   setNewVaultError(null);
+  // Read the runtime choice before closeNewVault() resets the form to its
+  // defaults; the setup gate below must see what the user actually picked.
+  const agent = selectedNewVaultAgent();
   try {
     const root = await invoke<string>('brain_create', {
       name,
       profile: selectedNewVaultProfile(),
       language,
-      agent: selectedNewVaultAgent(),
+      agent,
       model: selectedAgentModel(newVaultModelsEl),
       effort: newVaultEffortEl.value,
       purpose: newVaultPurposeEl.value.trim(),
@@ -1586,7 +1589,7 @@ async function createNewVault(): Promise<void> {
     closeNewVault();
     // A local-runtime brain needs its model stack before it can ingest. Run the
     // one-time setup now, with progress, so the brain is actually usable.
-    if (selectedNewVaultAgent() === 'opencode') await ensureOpencodeReady();
+    if (agent === 'opencode') await ensureOpencodeReady();
     await openVault(root);
     setIngestStatus('Brain created · add your first source with Ingest', false);
   } catch (error) {

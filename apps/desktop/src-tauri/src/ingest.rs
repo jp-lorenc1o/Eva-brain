@@ -1353,33 +1353,75 @@ fn ensure_ollama_serving(ollama: &Path) -> Result<(), String> {
     Err("Ollama server did not become ready".into())
 }
 
+/// Strip ANSI escape sequences (CSI/OSC) and stray control characters from
+/// captured CLI output so progress lines and errors stay readable in the UI.
+/// Ollama redraws its terminal UI with cursor and sync sequences even when
+/// stderr is a pipe; shown raw they turn one-line errors into garbage.
+fn sanitize_cli_output(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            match chars.peek() {
+                Some('[') => {
+                    chars.next();
+                    while let Some(&n) = chars.peek() {
+                        chars.next();
+                        if ('\u{40}'..='\u{7e}').contains(&n) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    chars.next();
+                    while let Some(&n) = chars.peek() {
+                        chars.next();
+                        if n == '\u{7}' {
+                            break;
+                        }
+                        if n == '\u{1b}' {
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                            }
+                            break;
+                        }
+                    }
+                }
+                _ => {
+                    chars.next();
+                }
+            }
+        } else if !c.is_control() || c == '\n' {
+            out.push(c);
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Derive `OPENCODE_DERIVED_MODEL` from the pulled base with `num_ctx` baked in.
 /// This is cheap (it references the base model's existing layers) and is the
 /// reliable way to give tool calls enough context regardless of how the user's
-/// Ollama server was started.
+/// Ollama server was started. The Modelfile goes through a real temp file:
+/// Ollama 0.32 dropped support for reading it from stdin with `-f -`.
 fn create_derived_model(ollama: &Path) -> Result<(), String> {
     let modelfile = format!("FROM {OPENCODE_BASE_MODEL}\nPARAMETER num_ctx {OPENCODE_NUM_CTX}\n");
-    let mut child = Command::new(ollama)
-        .args(["create", OPENCODE_DERIVED_MODEL, "-f", "-"])
-        .stdin(Stdio::piped())
+    let path = std::env::temp_dir().join("eva-opencode.Modelfile");
+    fs::write(&path, modelfile).map_err(|e| format!("write Modelfile: {e}"))?;
+    let out = Command::new(ollama)
+        .args(["create", OPENCODE_DERIVED_MODEL, "-f"])
+        .arg(&path)
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("start ollama create: {e}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(modelfile.as_bytes())
-            .map_err(|e| format!("write Modelfile: {e}"))?;
-    }
-    let out = child
-        .wait_with_output()
-        .map_err(|e| format!("wait for ollama create: {e}"))?;
+        .output();
+    let _ = fs::remove_file(&path);
+    let out = out.map_err(|e| format!("run ollama create: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {
         Err(format!(
             "ollama create failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+            sanitize_cli_output(&String::from_utf8_lossy(&out.stderr))
         ))
     }
 }
@@ -1442,7 +1484,7 @@ fn pull_model_with_progress(app: &AppHandle, ollama: &Path, model: &str) -> Resu
             Ok(0) => break,
             Ok(_) => {
                 if byte[0] == b'\r' || byte[0] == b'\n' {
-                    let line = String::from_utf8_lossy(&chunk).trim().to_string();
+                    let line = sanitize_cli_output(&String::from_utf8_lossy(&chunk));
                     chunk.clear();
                     if !line.is_empty() {
                         emit_setup(app, SetupStep::Model, "working", &line);
@@ -1461,7 +1503,7 @@ fn pull_model_with_progress(app: &AppHandle, ollama: &Path, model: &str) -> Resu
     } else {
         Err(format!(
             "downloading the model failed: {}",
-            first_line(&stderr_text)
+            sanitize_cli_output(&first_line(&stderr_text))
         ))
     }
 }
@@ -2610,7 +2652,12 @@ fn opencode_config(worktree: &Path, node: &Path, server: &Path, read_only: bool)
                 "npm": "@ai-sdk/openai-compatible",
                 "name": "Ollama (local)",
                 "options": { "baseURL": format!("http://127.0.0.1:{OLLAMA_PORT}/v1") },
-                "models": { OPENCODE_DERIVED_MODEL: { "name": "Eva local model", "tools": true } }
+                // reasoningEffort "none" is required on Ollama 0.32+: its /v1
+                // endpoint otherwise streams the model's thinking into a
+                // separate `reasoning` field and leaves `content` empty, so
+                // OpenCode never sees any text and every run comes back empty.
+                "models": { OPENCODE_DERIVED_MODEL: { "name": "Eva local model", "tools": true,
+                    "options": { "reasoningEffort": "none" } } }
             }
         },
         "mcp": {
@@ -3565,12 +3612,21 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, cleanup, deleted_paths, eva_schema, gate_agent_changes, git, git_action_needs_eva_identity, init_git_repo, lint, model_present, opencode_config, parse_installed_models, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, RunOutcome, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD, OPENCODE_BASE_MODEL, OPENCODE_DERIVED_MODEL};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, cleanup, deleted_paths, eva_schema, gate_agent_changes, git, git_action_needs_eva_identity, init_git_repo, lint, model_present, opencode_config, parse_installed_models, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, sanitize_cli_output, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, RunOutcome, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD, OPENCODE_BASE_MODEL, OPENCODE_DERIVED_MODEL};
     use std::{
         fs,
         path::Path,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn cli_output_sanitizer_strips_ansi_control_sequences() {
+        let raw = "\u{1b}[?2026h\u{1b}[?25l\u{1b}[1Ggathering model components \u{1b}[K\u{1b}[?25h\u{1b}[?2026l\nError: no Modelfile or safetensors files found";
+        assert_eq!(
+            sanitize_cli_output(raw),
+            "gathering model components Error: no Modelfile or safetensors files found"
+        );
+    }
 
     #[test]
     fn accepts_a_single_human_readable_brain_name() {
@@ -4290,6 +4346,13 @@ mod tests {
             .unwrap()
             .contains("127.0.0.1"));
         assert!(ingest["provider"]["ollama"]["models"][OPENCODE_DERIVED_MODEL].is_object());
+        // Ollama 0.32 regression guard: thinking must be disabled or /v1
+        // returns empty `content` for reasoning models.
+        assert_eq!(
+            ingest["provider"]["ollama"]["models"][OPENCODE_DERIVED_MODEL]["options"]
+                ["reasoningEffort"],
+            "none"
+        );
         assert_eq!(ingest["mcp"]["eva"]["type"], "local");
         assert_eq!(
             ingest["mcp"]["eva"]["environment"]["EVA_VAULT"],
