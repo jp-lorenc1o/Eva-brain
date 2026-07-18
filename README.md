@@ -177,6 +177,13 @@ leaves your machine — but it is not the same as the cloud-backed options:
 - Everything Eva's other runtimes guarantee still holds: `raw/` stays
   immutable, deletions and new lint issues wait for your review, and nothing is
   ever pushed anywhere.
+- **Ollama version compatibility is checked, not assumed.** This Eva build is
+  verified against Ollama 0.32.x (last tested: 0.32.1). Ollama updates itself
+  automatically and has changed behavior between minor versions before, so Eva
+  checks the installed version before setup and before every local run: below
+  0.31.0 it refuses with a clear message to update Ollama; outside the
+  verified 0.32.x range it continues but warns during setup that the version
+  difference is the first suspect if something misbehaves.
 
 ## Profile-aware work
 

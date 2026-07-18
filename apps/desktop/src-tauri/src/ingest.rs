@@ -307,6 +307,16 @@ impl AgentRuntime {
 // larger-context variant from this base (OPENCODE_DERIVED_MODEL) because the
 // stock context truncates the MCP tool definitions and breaks tool calling.
 const OPENCODE_BASE_MODEL: &str = "qwen3.5:4b";
+/// Oldest Ollama release the OpenCode adapter has ever worked against.
+/// Below this Eva refuses gracefully instead of failing mid-run.
+const OLLAMA_MIN_SUPPORTED: (u32, u32, u32) = (0, 31, 0);
+/// The [min, max) Ollama range verified end-to-end with this Eva build.
+/// 0.32 broke both `ollama create -f -` and /v1 reasoning output; the two
+/// fixes in this file are tested against 0.32.x. Outside this range Eva
+/// still runs but warns during setup, so the next silent break of an
+/// auto-updated Ollama turns into a visible first suspect instead.
+const OLLAMA_VERIFIED_MIN: (u32, u32, u32) = (0, 32, 0);
+const OLLAMA_VERIFIED_MAX_EXCLUSIVE: (u32, u32, u32) = (0, 33, 0);
 const OPENCODE_DERIVED_MODEL: &str = "eva-qwen3.5:4b";
 const OPENCODE_NUM_CTX: u32 = 32768;
 const OLLAMA_PORT: u16 = 11434;
@@ -1327,6 +1337,75 @@ fn ollama_list(ollama: &Path) -> Result<String, String> {
 }
 
 /// Start the Ollama server if it is not already answering, with the context
+/// Parse the first `x.y.z` triple out of `ollama --version` output. The line
+/// normally reads "ollama version is 0.32.1", but client/server warnings can
+/// precede it, so scan tokens instead of trusting the shape.
+fn parse_ollama_version(output: &str) -> Option<(u32, u32, u32)> {
+    for token in output.split_whitespace() {
+        let token = token.trim_matches(|c: char| !c.is_ascii_digit() && c != '.');
+        let mut parts = token.split('.');
+        let (Some(a), Some(b), Some(c)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        let c = c
+            .split(|ch: char| !ch.is_ascii_digit())
+            .next()
+            .unwrap_or_default();
+        if let (Ok(a), Ok(b), Ok(c)) = (a.parse(), b.parse(), c.parse()) {
+            return Some((a, b, c));
+        }
+    }
+    None
+}
+
+/// Ask the installed Ollama binary for its version. `Ok(None)` means the
+/// binary answered but the output was unparseable — callers should proceed
+/// (an unknown version is a warning at worst, never a lockout).
+fn ollama_cli_version(ollama: &Path) -> Result<Option<(u32, u32, u32)>, String> {
+    let out = Command::new(ollama)
+        .arg("--version")
+        .output()
+        .map_err(|e| format!("run ollama --version: {e}"))?;
+    let text = format!(
+        "{} {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Ok(parse_ollama_version(&text))
+}
+
+fn version_string(v: (u32, u32, u32)) -> String {
+    format!("{}.{}.{}", v.0, v.1, v.2)
+}
+
+enum OllamaVersionVerdict {
+    Verified,
+    /// Below OLLAMA_MIN_SUPPORTED: refuse gracefully with this message.
+    TooOld(String),
+    /// Outside the verified range (older-but-supported or newer): warn with
+    /// this message but keep going.
+    OutsideVerified(String),
+}
+
+fn ollama_version_verdict(version: (u32, u32, u32)) -> OllamaVersionVerdict {
+    if version < OLLAMA_MIN_SUPPORTED {
+        return OllamaVersionVerdict::TooOld(format!(
+            "Ollama {} is older than {}, the oldest release Eva's local runtime supports — update Ollama from ollama.com, then run the OpenCode setup again",
+            version_string(version),
+            version_string(OLLAMA_MIN_SUPPORTED),
+        ));
+    }
+    if version < OLLAMA_VERIFIED_MIN || version >= OLLAMA_VERIFIED_MAX_EXCLUSIVE {
+        return OllamaVersionVerdict::OutsideVerified(format!(
+            "Ollama {} detected — outside the {}.{}.x range verified with this Eva build. Setup will continue, but if the local runtime misbehaves, this version difference is the first suspect.",
+            version_string(version),
+            OLLAMA_VERIFIED_MIN.0,
+            OLLAMA_VERIFIED_MIN.1,
+        ));
+    }
+    OllamaVersionVerdict::Verified
+}
+
 /// window Eva's models need. `ollama serve` is idempotent — it exits fast if a
 /// server is already bound — so callers can probe with `ollama_list` first.
 fn ensure_ollama_serving(ollama: &Path) -> Result<(), String> {
@@ -1581,6 +1660,11 @@ fn opencode_ready() -> Result<(), String> {
     let ollama = ollama_program().map_err(|_| {
         "the local runtime is not set up yet — open this brain's settings and run the OpenCode setup".to_string()
     })?;
+    if let Ok(Some(version)) = ollama_cli_version(&ollama) {
+        if let OllamaVersionVerdict::TooOld(message) = ollama_version_verdict(version) {
+            return Err(message);
+        }
+    }
     let list = ollama_list(&ollama).map_err(|_| {
         "the local Ollama server is not running — run the OpenCode setup to start it".to_string()
     })?;
@@ -1612,6 +1696,18 @@ fn ensure_opencode_ready(app: &AppHandle) -> Result<(), String> {
             ollama_program()?
         }
     };
+    // 1b. Version gate: refuse a known-broken Ollama now, with a clear message,
+    // instead of letting it fail later in a confusing way (0.32 silently broke
+    // two adapter paths). Unknown or unparseable versions never block.
+    if let Ok(Some(version)) = ollama_cli_version(&ollama) {
+        match ollama_version_verdict(version) {
+            OllamaVersionVerdict::TooOld(message) => return Err(message),
+            OllamaVersionVerdict::OutsideVerified(message) => {
+                emit_setup(app, SetupStep::Ollama, "done", &message);
+            }
+            OllamaVersionVerdict::Verified => {}
+        }
+    }
     // 2. Ollama server running.
     emit_setup(app, SetupStep::Server, "working", "Starting the local model server…");
     ensure_ollama_serving(&ollama)?;
@@ -3612,12 +3708,47 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, cleanup, deleted_paths, eva_schema, gate_agent_changes, git, git_action_needs_eva_identity, init_git_repo, lint, model_present, opencode_config, parse_installed_models, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, sanitize_cli_output, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, RunOutcome, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD, OPENCODE_BASE_MODEL, OPENCODE_DERIVED_MODEL};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, cleanup, deleted_paths, eva_schema, gate_agent_changes, git, git_action_needs_eva_identity, init_git_repo, lint, model_present, ollama_version_verdict, opencode_config, parse_installed_models, parse_ollama_version, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, sanitize_cli_output, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, OllamaVersionVerdict, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, RunOutcome, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD, OPENCODE_BASE_MODEL, OPENCODE_DERIVED_MODEL};
     use std::{
         fs,
         path::Path,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn ollama_version_parses_from_normal_and_noisy_output() {
+        assert_eq!(parse_ollama_version("ollama version is 0.32.1"), Some((0, 32, 1)));
+        assert_eq!(
+            parse_ollama_version(
+                "Warning: client version is newer than server (0.31.2)\nollama version is 0.33.0-rc1"
+            ),
+            Some((0, 31, 2))
+        );
+        assert_eq!(parse_ollama_version("no numbers here"), None);
+    }
+
+    #[test]
+    fn ollama_version_gate_refuses_old_warns_outside_passes_verified() {
+        assert!(matches!(
+            ollama_version_verdict((0, 30, 9)),
+            OllamaVersionVerdict::TooOld(_)
+        ));
+        assert!(matches!(
+            ollama_version_verdict((0, 31, 2)),
+            OllamaVersionVerdict::OutsideVerified(_)
+        ));
+        assert!(matches!(
+            ollama_version_verdict((0, 32, 1)),
+            OllamaVersionVerdict::Verified
+        ));
+        assert!(matches!(
+            ollama_version_verdict((0, 33, 0)),
+            OllamaVersionVerdict::OutsideVerified(_)
+        ));
+        if let OllamaVersionVerdict::TooOld(message) = ollama_version_verdict((0, 30, 0)) {
+            assert!(message.contains("0.31.0"));
+        }
+    }
 
     #[test]
     fn cli_output_sanitizer_strips_ansi_control_sequences() {

@@ -42,3 +42,18 @@ harness rather than swapping on benchmark reputation alone.
 Do not oversell the local runtime as equal to the cloud options. It is free and
 private but slower and less capable; the README states this trade-off honestly
 and it should stay that way.
+
+**Ollama version compatibility is enforced in code, not assumed.** Ollama
+auto-updates on user machines and has broken this adapter across a single
+minor release before: 0.32 removed `ollama create -f -` (Modelfile via stdin)
+and changed `/v1/chat/completions` to stream a thinking model's output into a
+separate `reasoning` field with `content` empty, which OpenCode reads as an
+empty run (hence the pinned `reasoningEffort: "none"` in the generated
+provider config). The constants `OLLAMA_MIN_SUPPORTED` and
+`OLLAMA_VERIFIED_MIN`/`OLLAMA_VERIFIED_MAX_EXCLUSIVE` in `ingest.rs` encode
+the policy: refuse below the minimum with an actionable message, warn during
+setup outside the verified range, never hard-block a newer version (an
+auto-updated Ollama must not brick the feature). When a new Ollama minor is
+verified end-to-end — real setup plus a gated ingest in the running app, not
+just unit tests — bump the verified range and note the tested version in the
+README.
