@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build -w packages/wiki-lib",
-    "test": "npm run test -w packages/wiki-lib",
+    "test": "npm run test --workspaces --if-present",
     "tauri": "npm run tauri -w apps/desktop --"
   }
 }

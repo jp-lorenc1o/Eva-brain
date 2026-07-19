@@ -19,7 +19,30 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": ["'self'"],
+        "connect-src": ["ipc:", "http://ipc.localhost"],
+        "font-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "script-src": ["'self'"],
+        "object-src": ["'none'"],
+        "frame-src": ["'none'"],
+        "base-uri": ["'none'"],
+        "form-action": ["'none'"]
+      },
+      "devCsp": {
+        "default-src": ["'self'"],
+        "connect-src": ["'self'", "ipc:", "http://ipc.localhost", "ws://localhost:1420"],
+        "font-src": ["'self'"],
+        "img-src": ["'self'", "data:"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "script-src": ["'self'"],
+        "object-src": ["'none'"],
+        "frame-src": ["'none'"],
+        "base-uri": ["'none'"],
+        "form-action": ["'none'"]
+      }
     }
   },
   "bundle": {
