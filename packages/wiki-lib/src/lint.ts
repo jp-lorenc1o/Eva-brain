@@ -7,7 +7,29 @@ export type LintRule =
   | 'missing-title'
   | 'missing-type'
   | 'missing-source'
-  | 'invalid-source';
+  | 'invalid-source'
+  | 'misplaced-page';
+
+/**
+ * First path segments that signal an absolute filesystem path recreated
+ * inside the vault. Observed in the wild: an agent hallucinates an absolute
+ * write target (`/private/var/folders/…/T/…`), the sandbox re-roots the write
+ * into the vault, and the whole fake path becomes real nested directories.
+ * These roots are filesystem anatomy, never knowledge taxonomy.
+ */
+const MISPLACED_ROOTS = new Set([
+  'private',
+  'var',
+  'tmp',
+  'usr',
+  'etc',
+  'opt',
+  'home',
+  'Users',
+  'Library',
+  'System',
+  'Volumes',
+]);
 
 export interface LintIssue {
   /** Page id the issue belongs to. */
@@ -26,6 +48,9 @@ export interface LintIssue {
  * - missing-type: frontmatter has no `type` field
  * - missing-source: a summary does not identify the raw document it digests
  * - invalid-source: a summary's source is not a path inside `raw/`
+ * - misplaced-page: the page's path re-roots an absolute filesystem path
+ *   (private/var/…, Users/…, tmp/…) — almost certainly a hallucinated agent
+ *   write target that a sandbox contained; the change should be rejected
  */
 export function lintVault(vault: Vault): LintIssue[] {
   const issues: LintIssue[] = [];
@@ -33,6 +58,15 @@ export function lintVault(vault: Vault): LintIssue[] {
   for (const edge of buildGraph(vault).edges) hasIncoming.add(edge.target);
 
   for (const page of vault.pages) {
+    const rootSegment = page.id.split('/', 1)[0];
+    if (page.id.includes('/') && MISPLACED_ROOTS.has(rootSegment)) {
+      issues.push({
+        page: page.id,
+        rule: 'misplaced-page',
+        message:
+          'Path recreates an absolute filesystem path inside the vault — likely a hallucinated agent write target; recommend rejecting this change',
+      });
+    }
     for (const link of page.links) {
       if (!resolveLink(vault, link.target)) {
         issues.push({

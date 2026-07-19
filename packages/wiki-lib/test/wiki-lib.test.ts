@@ -140,4 +140,37 @@ describe('test-vault', () => {
     ]);
     expect(lintPage(contractVault, 'digest').map((issue) => issue.rule)).toEqual(['invalid-source']);
   });
+
+  it('flags pages that recreate an absolute filesystem path inside the vault', () => {
+    // The observed incident: the agent hallucinated an absolute write target
+    // and the sandbox re-rooted the whole path into the worktree.
+    const escapedVault = buildVault([
+      { path: 'index.md', content: '---\ntitle: Home\ntype: index\n---\n\nNo links.' },
+      {
+        path: 'private/var/folders/sp/63fpzfkj72x3bljwz_57bdxc0000gn/T/opencode/entities/colossus-of-rhodes.md',
+        content: '---\ntitle: Colossus of Rhodes\ntype: entity\n---\n\nA statue of Helios.',
+      },
+      { path: 'Users/someone/notes.md', content: '---\ntitle: Notes\ntype: concept\n---\n\nBody.' },
+    ]);
+    const misplaced = lintVault(escapedVault)
+      .filter((issue) => issue.rule === 'misplaced-page')
+      .map((issue) => issue.page)
+      .sort();
+    expect(misplaced).toEqual([
+      'Users/someone/notes',
+      'private/var/folders/sp/63fpzfkj72x3bljwz_57bdxc0000gn/T/opencode/entities/colossus-of-rhodes',
+    ]);
+  });
+
+  it('does not flag normal taxonomy or a top-level page that shares a root name', () => {
+    const normalVault = buildVault([
+      { path: 'index.md', content: '---\ntitle: Home\ntype: index\n---\n\nSee [[concepts/pharos]] and [[tmp]].' },
+      { path: 'concepts/pharos.md', content: '---\ntitle: Pharos\ntype: concept\n---\n\nBody.' },
+      // A page literally named "tmp" at the vault root is odd but legitimate;
+      // only nesting UNDER a filesystem root is the misplacement signal.
+      { path: 'tmp.md', content: '---\ntitle: Temperature\ntype: concept\n---\n\nBody.' },
+    ]);
+    const misplaced = lintVault(normalVault).filter((issue) => issue.rule === 'misplaced-page');
+    expect(misplaced).toEqual([]);
+  });
 });
