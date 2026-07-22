@@ -2768,6 +2768,69 @@ fn opencode_config(worktree: &Path, node: &Path, server: &Path, read_only: bool)
     })
 }
 
+/// How long OpenCode's JSONL stream may stay silent before the run is
+/// declared wedged rather than slow. Model load plus prefill on a big
+/// worktree stays well under three minutes on supported hardware.
+const OPENCODE_INACTIVITY_LIMIT: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// Outcome of following OpenCode's JSONL stream to its end.
+enum OpencodeStream {
+    /// The stream closed normally; carries the model's final text message.
+    Completed(String),
+    /// No line arrived within the inactivity limit. The caller kills the
+    /// child — the stream itself has no process handle to act on.
+    Stalled,
+}
+
+/// Follow OpenCode's stdout JSONL to completion: keep the latest text part
+/// (each one carries the full text of its step, so the last is the model's
+/// final message), hand every event part to `on_part` for activity
+/// reporting, and — the load-bearing part — watch for silence. OpenCode's
+/// startup performs remote fetches (models.dev refresh, npm provider
+/// resolution, update check) with no timeout of their own; on a stalling
+/// connection the whole run wedges before the first model request, observed
+/// as ESTABLISHED-but-dead HTTPS connections and no MCP spawn. Reading on a
+/// side thread that feeds a channel makes that silence detectable where a
+/// blocking read would hang forever. On `Stalled` the reader thread is left
+/// parked on the dead pipe; it exits once the caller kills the child and the
+/// pipe closes.
+fn follow_opencode_stream(
+    stdout: impl Read + Send + 'static,
+    inactivity_limit: std::time::Duration,
+    mut on_part: impl FnMut(&serde_json::Value),
+) -> Result<OpencodeStream, String> {
+    let (line_tx, line_rx) = std::sync::mpsc::channel::<std::io::Result<String>>();
+    let reader_thread = std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            if line_tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let mut final_text = String::new();
+    loop {
+        let line = match line_rx.recv_timeout(inactivity_limit) {
+            Ok(line) => line.map_err(|e| e.to_string())?,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                return Ok(OpencodeStream::Stalled);
+            }
+        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        let part = &v["part"];
+        if part["type"].as_str() == Some("text") {
+            if let Some(t) = part["text"].as_str() {
+                final_text = t.to_string();
+            }
+        }
+        on_part(part);
+    }
+    let _ = reader_thread.join();
+    Ok(OpencodeStream::Completed(final_text))
+}
+
 /// Spawn OpenCode headless (`run --format json`) against the local Ollama model,
 /// stream its JSONL events into Eva's activity feed, and return the model's
 /// final text (a summary for ingest, JSON for query/health/tools — parsed by
@@ -2813,6 +2876,15 @@ fn run_opencode_agent(
                 prompt,
             ])
             .env("OPENCODE_CONFIG_DIR", &cfg_dir)
+            // A local-first run must not depend on remote fetches: OpenCode
+            // refreshes its models.dev registry (and checks for updates) at
+            // startup, and on a stalling connection those fetches wedge the
+            // whole run before the first model request (observed repeatedly —
+            // ESTABLISHED-but-stalled HTTPS connections, no MCP spawn). The
+            // cached registry is enough; Eva's providers are fully declared
+            // in the generated config anyway.
+            .env("OPENCODE_DISABLE_MODELS_FETCH", "1")
+            .env("OPENCODE_DISABLE_AUTOUPDATE", "1")
             .current_dir(worktree)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -2830,19 +2902,10 @@ fn run_opencode_agent(
 
         let stdout = child.stdout.take().unwrap();
         let wt_prefix = worktree.to_string_lossy().to_string();
-        let mut final_text = String::new();
-        for line in BufReader::new(stdout).lines() {
-            let line = line.map_err(|e| e.to_string())?;
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
-                continue;
-            };
-            let part = &v["part"];
+        let outcome = follow_opencode_stream(stdout, OPENCODE_INACTIVITY_LIMIT, |part| {
             match part["type"].as_str() {
-                // Each text part carries the full text of that step; keeping the
-                // latest leaves us with the model's final message.
                 Some("text") => {
                     if let Some(t) = part["text"].as_str() {
-                        final_text = t.to_string();
                         if let (Some(app), Some(id)) = (app, job_id) {
                             let snip: String = t.chars().take(200).collect();
                             let _ = app.emit(
@@ -2877,7 +2940,17 @@ fn run_opencode_agent(
                 }
                 _ => {}
             }
-        }
+        })?;
+        let final_text = match outcome {
+            OpencodeStream::Completed(text) => text,
+            OpencodeStream::Stalled => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(
+                    "the local agent made no progress for 3 minutes and was stopped — this usually means a stalled network fetch during startup; try again".into(),
+                );
+            }
+        };
         let status = child.wait().map_err(|e| e.to_string())?;
         let stderr_text = stderr_thread.join().unwrap_or_default();
         if !status.success() {
@@ -3708,11 +3781,11 @@ pub fn query_decide(
 
 #[cfg(test)]
 mod tests {
-    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, cleanup, deleted_paths, eva_schema, gate_agent_changes, git, git_action_needs_eva_identity, init_git_repo, lint, model_present, ollama_version_verdict, opencode_config, parse_installed_models, parse_ollama_version, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, sanitize_cli_output, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, OllamaVersionVerdict, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, RunOutcome, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD, OPENCODE_BASE_MODEL, OPENCODE_DERIVED_MODEL};
+    use super::{analysis_markdown, bootstrap_vault, brain_dir_name, brain_manifest, brain_settings_get, brains_root_at, cleanup, deleted_paths, eva_schema, follow_opencode_stream, gate_agent_changes, git, git_action_needs_eva_identity, init_git_repo, lint, model_present, ollama_version_verdict, opencode_config, parse_installed_models, parse_ollama_version, normalize_profile_tool_options, normalize_working_set, parse_agent_json, profile_section, profile_starter_page, profile_tool_origin, profile_tool_prompt, replace_profile_section, runtime_for_vault, sanitize_cli_output, update_brain_settings, validate_brain_manifest, vault_profile_with_brain_profile, verify_agent_write_boundary, verify_brain_standard, working_set_instruction, AgentRuntime, BrainProfile, HealthReport, OllamaVersionVerdict, OpencodeStream, ProfileTool, ProfileToolOptions, QueryAnswer, QueryCitation, RunOutcome, VaultProfile, BRAIN_MANIFEST, BRAIN_MANIFEST_FILE, EVA_MD, OPENCODE_BASE_MODEL, OPENCODE_DERIVED_MODEL};
     use std::{
         fs,
         path::Path,
-        time::{SystemTime, UNIX_EPOCH},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     #[test]
@@ -3748,6 +3821,68 @@ mod tests {
         if let OllamaVersionVerdict::TooOld(message) = ollama_version_verdict((0, 30, 0)) {
             assert!(message.contains("0.31.0"));
         }
+    }
+
+    /// A stdout stand-in the test controls byte-for-byte: yields queued
+    /// chunks, blocks while the sender is alive but silent (the stalled-pipe
+    /// shape), and reports EOF once the sender is dropped.
+    struct ScriptedPipe {
+        rx: std::sync::mpsc::Receiver<Vec<u8>>,
+        pending: Vec<u8>,
+    }
+
+    impl std::io::Read for ScriptedPipe {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            if self.pending.is_empty() {
+                match self.rx.recv() {
+                    Ok(chunk) => self.pending = chunk,
+                    Err(_) => return Ok(0),
+                }
+            }
+            let n = self.pending.len().min(out.len());
+            out[..n].copy_from_slice(&self.pending[..n]);
+            self.pending.drain(..n);
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn opencode_watchdog_reports_a_silent_open_pipe_as_stalled() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(b"{\"part\":{\"type\":\"text\",\"text\":\"starting\"}}\n".to_vec())
+            .unwrap();
+        let pipe = ScriptedPipe { rx, pending: Vec::new() };
+        // The sender stays alive but sends nothing more: the pipe is open yet
+        // silent, exactly how a stalled startup fetch presents. Without the
+        // watchdog this call would block forever.
+        let outcome = follow_opencode_stream(pipe, Duration::from_millis(200), |_| {}).unwrap();
+        assert!(matches!(outcome, OpencodeStream::Stalled));
+        drop(tx);
+    }
+
+    #[test]
+    fn opencode_stream_keeps_the_last_text_part_and_reports_activity() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        for line in [
+            "{\"part\":{\"type\":\"text\",\"text\":\"working…\"}}\n",
+            "not json\n",
+            "{\"part\":{\"type\":\"tool\",\"tool\":\"write\"}}\n",
+            "{\"part\":{\"type\":\"text\",\"text\":\"final summary\"}}\n",
+        ] {
+            tx.send(line.as_bytes().to_vec()).unwrap();
+        }
+        drop(tx); // clean EOF: the process exited normally
+        let pipe = ScriptedPipe { rx, pending: Vec::new() };
+        let mut kinds = Vec::new();
+        let outcome = follow_opencode_stream(pipe, Duration::from_secs(5), |part| {
+            kinds.push(part["type"].as_str().unwrap_or("").to_string());
+        })
+        .unwrap();
+        match outcome {
+            OpencodeStream::Completed(text) => assert_eq!(text, "final summary"),
+            OpencodeStream::Stalled => panic!("stream with prompt lines must not stall"),
+        }
+        assert_eq!(kinds, ["text", "tool", "text"]);
     }
 
     #[test]
